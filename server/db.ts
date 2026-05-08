@@ -76,6 +76,8 @@ export const taskItems = sqliteTable('task_items', {
   specLabel: text('spec_label').notNull(),
   unitPrice: real('unit_price').notNull(),
   quantity: integer('quantity').notNull().default(1),
+  displayAmount: real('display_amount').notNull().default(0),
+  displayUnit: text('display_unit').notNull().default('斤'),
   plannedWeight: real('planned_weight').notNull().default(0),
   actualWeight: real('actual_weight').notNull().default(0),
 });
@@ -83,6 +85,7 @@ export const taskItems = sqliteTable('task_items', {
 export const taskPhotos = sqliteTable('task_photos', {
   id: text('id').primaryKey(),
   taskId: text('task_id').notNull().references(() => deliveryTasks.id, { onDelete: 'cascade' }),
+  stage: text('stage').notNull().default('复秤'),
   fileName: text('file_name').notNull(),
   originalName: text('original_name').notNull().default(''),
   mimeType: text('mime_type').notNull().default('image/jpeg'),
@@ -189,12 +192,14 @@ export function initDatabase() {
       product_id TEXT NOT NULL, spec_id TEXT NOT NULL,
       product_name TEXT NOT NULL, spec_label TEXT NOT NULL,
       unit_price REAL NOT NULL, quantity INTEGER NOT NULL DEFAULT 1,
+      display_amount REAL NOT NULL DEFAULT 0, display_unit TEXT NOT NULL DEFAULT '斤',
       planned_weight REAL NOT NULL DEFAULT 0, actual_weight REAL NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_task_items_task ON task_items(task_id);
     CREATE TABLE IF NOT EXISTS task_photos (
       id TEXT PRIMARY KEY,
       task_id TEXT NOT NULL REFERENCES delivery_tasks(id) ON DELETE CASCADE,
+      stage TEXT NOT NULL DEFAULT '复秤',
       file_name TEXT NOT NULL,
       original_name TEXT NOT NULL DEFAULT '',
       mime_type TEXT NOT NULL DEFAULT 'image/jpeg',
@@ -226,8 +231,26 @@ export function initDatabase() {
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
   `);
+  ensureTaskItemColumn('display_amount', `ALTER TABLE task_items ADD COLUMN display_amount REAL NOT NULL DEFAULT 0`);
+  ensureTaskItemColumn('display_unit', `ALTER TABLE task_items ADD COLUMN display_unit TEXT NOT NULL DEFAULT '斤'`);
+  ensureTableColumn('task_photos', 'stage', `ALTER TABLE task_photos ADD COLUMN stage TEXT NOT NULL DEFAULT '复秤'`);
+  normalizeLegacyTaskStatuses();
   ensureAdminUser();
   console.log('Database initialized');
+}
+
+function ensureTaskItemColumn(columnName: string, statement: string) {
+  ensureTableColumn('task_items', columnName, statement);
+}
+
+function ensureTableColumn(tableName: string, columnName: string, statement: string) {
+  const columns = sqlite.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+  if (columns.some(column => column.name === columnName)) return;
+  sqlite.exec(statement);
+}
+
+function normalizeLegacyTaskStatuses() {
+  sqlite.prepare(`UPDATE delivery_tasks SET status = '待复秤', updated_at = datetime('now','localtime') WHERE status = '待拍照'`).run();
 }
 
 function ensureAdminUser() {

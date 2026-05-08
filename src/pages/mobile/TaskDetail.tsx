@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Input, InputNumber, Modal, Spin, message } from 'antd';
+import { ImageViewer } from 'antd-mobile';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -7,13 +8,16 @@ import {
   CheckCircle2,
   ImageUp,
   MapPin,
+  Minus,
   Phone,
+  Plus,
   Scale,
   Truck,
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '@/api/client';
 import { SectionHeading, StatusBadge } from '@/components/mobile/shared';
+import { formatTaskItemMeasure, type TaskItemUnit } from '@/shared/task-item';
 import { formatMoney, formatWeight } from '@/utils/format';
 
 type TaskItem = {
@@ -21,12 +25,15 @@ type TaskItem = {
   productName: string;
   specLabel: string;
   unitPrice: number;
+  displayAmount?: number;
+  displayUnit?: TaskItemUnit;
   plannedWeight: number;
   actualWeight: number;
 };
 
 type TaskPhoto = {
   id: string;
+  stage?: string;
   url: string;
   originalName: string;
 };
@@ -67,7 +74,6 @@ export default function TaskDetail() {
   const [task, setTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
   const [weighValues, setWeighValues] = useState<Record<string, number>>({});
-  const [totalWeigh, setTotalWeigh] = useState<number>(0);
   const [selectedPhotos, setSelectedPhotos] = useState<File[]>([]);
   const [deliveryPhotos, setDeliveryPhotos] = useState<File[]>([]);
   const [sentBasket, setSentBasket] = useState(0);
@@ -77,6 +83,8 @@ export default function TaskDetail() {
   const [actionLoading, setActionLoading] = useState(false);
   const [recognizingWeight, setRecognizingWeight] = useState(false);
   const [recognizedWeight, setRecognizedWeight] = useState<RecognizedWeight | null>(null);
+  const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
+  const [photoViewerIndex, setPhotoViewerIndex] = useState(0);
   const albumInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const weighPhotoInputRef = useRef<HTMLInputElement | null>(null);
@@ -96,7 +104,6 @@ export default function TaskDetail() {
         });
 
         setWeighValues(nextWeighValues);
-        setTotalWeigh(currentTask.actualWeight > 0 ? currentTask.actualWeight : currentTask.plannedWeight);
         setSelectedPhotos([]);
         setDeliveryPhotos([]);
         setRecognizedWeight(null);
@@ -134,6 +141,22 @@ export default function TaskDetail() {
     deliveryPhotoPreviews.forEach(photo => URL.revokeObjectURL(photo.url));
   }, [deliveryPhotoPreviews]);
 
+  const totalWeigh = useMemo(() => {
+    if (!task) return 0;
+    return task.items.reduce((sum, item) => sum + Number(weighValues[item.id] || 0), 0);
+  }, [task, weighValues]);
+
+  const updateWeighValue = (itemId: string, value: number) => {
+    setWeighValues(prev => ({
+      ...prev,
+      [itemId]: Math.max(0, Number(value.toFixed(1))),
+    }));
+  };
+
+  const stepWeighValue = (itemId: string, delta: number) => {
+    updateWeighValue(itemId, Number(weighValues[itemId] || 0) + delta);
+  };
+
   const handleWeigh = async () => {
     if (!task) return;
     if (selectedPhotos.length === 0) {
@@ -170,7 +193,9 @@ export default function TaskDetail() {
       formData.append('photo', file);
       const result = await api.postForm<RecognizedWeight>(`/tasks/${task.id}/weigh/recognize`, formData);
       setRecognizedWeight(result);
-      setTotalWeigh(result.weight);
+      if (task.items.length === 1) {
+        updateWeighValue(task.items[0].id, result.weight);
+      }
       message.success(`已识别 ${result.weight}斤`);
     } catch (err: any) {
       message.error(err.message);
@@ -254,6 +279,11 @@ export default function TaskDetail() {
   }
 
   const totalDelta = totalWeigh - task.plannedWeight;
+  const formatItemMeasure = (item: TaskItem) => (
+    item.displayAmount && item.displayAmount > 0
+      ? formatTaskItemMeasure(item.displayAmount, item.displayUnit)
+      : formatWeight(item.plannedWeight)
+  );
   const deltaText = totalDelta === 0
     ? '与应配一致'
     : totalDelta > 0
@@ -261,6 +291,7 @@ export default function TaskDetail() {
       : `少 ${formatWeight(Math.abs(totalDelta))}`;
   const isWeighStage = task.status === '待复秤' || task.status === '待配货';
   const isDeliveryStage = task.status === '待送达';
+  const archivedPhotoUrls = task.photos?.map(photo => photo.url) || [];
 
   return (
     <div className="mobile-page">
@@ -330,17 +361,31 @@ export default function TaskDetail() {
                 <div key={item.id} className="mobile-input-row">
                   <div>
                     <div className="mobile-input-row__label">{item.productName}</div>
-                    <div className="mobile-input-row__hint">应配 {formatWeight(item.plannedWeight)}</div>
+                    <div className="mobile-input-row__hint">应配 {formatItemMeasure(item)}</div>
                   </div>
-                  <div className="mobile-number-input">
+                  <div className="mobile-stepper mobile-stepper--weight">
+                    <button
+                      type="button"
+                      onClick={() => stepWeighValue(item.id, -0.1)}
+                      aria-label="减少"
+                    >
+                      <Minus size={15} />
+                    </button>
                     <InputNumber
+                      controls={false}
                       min={0}
                       step={0.1}
                       precision={1}
                       value={weighValues[item.id]}
-                      onChange={value => setWeighValues(prev => ({ ...prev, [item.id]: Number(value || 0) }))}
-                      addonAfter="斤"
+                      onChange={value => updateWeighValue(item.id, Number(value || 0))}
                     />
+                    <button
+                      type="button"
+                      onClick={() => stepWeighValue(item.id, 0.1)}
+                      aria-label="增加"
+                    >
+                      <Plus size={15} />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -348,15 +393,8 @@ export default function TaskDetail() {
 
             <div className="mobile-field-card" style={{ marginTop: 14 }}>
               <div className="mobile-field-card__label">总重量</div>
-              <div className="mobile-number-input mobile-number-input--wide">
-                <InputNumber
-                  min={0}
-                  step={0.1}
-                  precision={1}
-                  value={totalWeigh}
-                  onChange={value => setTotalWeigh(Number(value || 0))}
-                  addonAfter="斤"
-                />
+              <div className="mobile-auto-total">
+                {formatWeight(totalWeigh)}
               </div>
               <div className="mobile-panel-note">
                 <span>应配 {formatWeight(task.plannedWeight)}</span>
@@ -610,7 +648,7 @@ export default function TaskDetail() {
                 </div>
               </div>
               <div className="mobile-info-row__value">
-                <strong>{formatWeight(item.plannedWeight)}</strong>
+                <strong>{formatItemMeasure(item)}</strong>
                 <span>{formatMoney(item.plannedWeight * item.unitPrice)}</span>
               </div>
             </div>
@@ -641,12 +679,27 @@ export default function TaskDetail() {
         <>
           <SectionHeading title="照片" extra={`${task.photos.length} 张`} />
           <div className="mobile-photo-grid mobile-rise" style={{ animationDelay: '280ms' }}>
-            {task.photos.map(photo => (
-              <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer" className="mobile-photo-card">
+            {task.photos.map((photo, index) => (
+              <button
+                key={photo.id}
+                type="button"
+                className="mobile-photo-card mobile-photo-card--button"
+                onClick={() => {
+                  setPhotoViewerIndex(index);
+                  setPhotoViewerOpen(true);
+                }}
+              >
                 <img src={photo.url} alt={photo.originalName} className="mobile-photo-card__image" />
-              </a>
+                <span className="mobile-photo-card__stage">{photo.stage || '留档'}</span>
+              </button>
             ))}
           </div>
+          <ImageViewer.Multi
+            images={archivedPhotoUrls}
+            visible={photoViewerOpen}
+            defaultIndex={photoViewerIndex}
+            onClose={() => setPhotoViewerOpen(false)}
+          />
         </>
       ) : null}
     </div>

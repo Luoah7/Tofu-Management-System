@@ -1,21 +1,36 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Button, DatePicker, Drawer, Input, InputNumber, Modal, Select, Spin, message } from 'antd';
-import { Camera, ClipboardPaste, FileSearch, FileText, Package, Plus, Scale, Truck } from 'lucide-react';
+import { Button, Drawer, Input, InputNumber, Modal, Select, Spin, message } from 'antd';
+import { DatePicker as MobileDatePicker } from 'antd-mobile';
+import { ChevronRight, ClipboardPaste, FileSearch, FileText, Minus, Package, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { api } from '@/api/client';
 import { EmptyState, SectionHeading, TaskCard } from '@/components/mobile/shared';
-import { groupPendingTasks, type PendingGroupKey } from './task-board';
+import {
+  TASK_ITEM_UNITS,
+  formatTaskItemMeasure,
+  getTaskItemMin,
+  getTaskItemStep,
+  normalizeTaskItemInput,
+  type TaskItemUnit,
+} from '@/shared/task-item';
 
 type Task = {
   id: string;
+  taskDate: string;
   merchantName: string;
   status: string;
   plannedWeight: number;
   actualWeight: number;
   completedAt?: string;
   routeEta: string;
-  items: Array<{ productName: string; plannedWeight: number }>;
+  createdAt?: string;
+  items: Array<{
+    productName: string;
+    plannedWeight: number;
+    displayAmount?: number;
+    displayUnit?: TaskItemUnit;
+  }>;
 };
 
 type Merchant = {
@@ -42,16 +57,18 @@ type Product = {
   specs: ProductSpec[];
 };
 
-type ManualLine = {
+type EntryLine = {
   id: string;
   productId: string;
   specId: string;
-  plannedWeight: number;
+  displayAmount: number;
+  displayUnit: TaskItemUnit;
 };
 
 type EntryMode = 'paste' | 'manual';
 
 type PreviewTask = {
+  id: string;
   taskDate: string;
   merchantId: string;
   merchantName: string;
@@ -62,14 +79,26 @@ type PreviewTask = {
   routeEta: string;
   plannedWeight: number;
   items: Array<{
+    id: string;
     productId: string;
     specId: string;
     productName: string;
     specLabel: string;
     unitPrice: number;
+    displayAmount: number;
+    displayUnit: TaskItemUnit;
     plannedWeight: number;
   }>;
   warnings?: string[];
+};
+
+type EntryItem = EntryLine & {
+  product: Product | null;
+  spec: ProductSpec | null;
+  productName: string;
+  specLabel: string;
+  unitPrice: number;
+  plannedWeight: number;
 };
 
 const STATUS_TABS = [
@@ -78,11 +107,238 @@ const STATUS_TABS = [
   { key: 'completed', label: '已归档' },
 ] as const;
 
-const PENDING_GROUPS: Array<{ key: PendingGroupKey; label: string; icon: typeof Package; desc: string }> = [
-  { key: '待配货', label: '先配货', icon: Package, desc: '先按订货内容准备货' },
-  { key: '待复秤', label: '复秤并拍照', icon: Scale, desc: '称完直接留档照片' },
-  { key: '待送达', label: '准备送达', icon: Truck, desc: '重量和照片都齐了，剩下送货确认' },
-];
+function parseDateValue(value: string, fallback = new Date()) {
+  const parsed = dayjs(value);
+  return parsed.isValid() ? parsed.toDate() : fallback;
+}
+
+function MobileDateField({
+  value,
+  onChange,
+  precision = 'day',
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  precision?: 'day' | 'month';
+}) {
+  return (
+    <MobileDatePicker
+      precision={precision}
+      value={parseDateValue(value)}
+      onConfirm={(date) => onChange(dayjs(date).format(precision === 'month' ? 'YYYY-MM' : 'YYYY-MM-DD'))}
+    >
+      {(pickerValue, actions) => (
+        <button type="button" className="mobile-date-trigger" onClick={actions.open}>
+          <span>{dayjs(pickerValue).format(precision === 'month' ? 'YYYY年M月' : 'YYYY年M月D日')}</span>
+          <span>选择</span>
+        </button>
+      )}
+    </MobileDatePicker>
+  );
+}
+
+function createLine(products: Product[]): EntryLine {
+  const firstProduct = products[0];
+  const firstSpec = firstProduct?.specs[0];
+  return {
+    id: `line_${Math.random().toString(36).slice(2, 8)}`,
+    productId: firstProduct?.id || '',
+    specId: firstSpec?.id || '',
+    displayAmount: 1,
+    displayUnit: '斤',
+  };
+}
+
+function parseArchivedTime(task: Task) {
+  if (!task.completedAt) return 0;
+  const normalized = task.completedAt.replace(/-/g, '/');
+  const timestamp = new Date(normalized).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function parseCreatedTime(task: Task) {
+  const source = task.createdAt || `${task.taskDate} 00:00:00`;
+  const normalized = source.replace(/-/g, '/');
+  const timestamp = new Date(normalized).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function toPreviewTask(raw: Omit<PreviewTask, 'id'>): PreviewTask {
+  return {
+    ...raw,
+    id: `${raw.merchantId}_${Math.random().toString(36).slice(2, 8)}`,
+    items: raw.items.map(item => ({
+      ...item,
+      id: `${item.productId}_${item.specId}_${Math.random().toString(36).slice(2, 8)}`,
+      displayAmount: Number(item.displayAmount || item.plannedWeight || 0),
+      displayUnit: item.displayUnit || '斤',
+    })),
+  };
+}
+
+function buildItems(lines: EntryLine[], products: Product[]): EntryItem[] {
+  return lines.map((line) => {
+    const product = products.find(item => item.id === line.productId) || null;
+    const specs = product?.specs || [];
+    const spec = specs.find(item => item.id === line.specId) || specs[0] || null;
+    const normalized = normalizeTaskItemInput({
+      displayAmount: line.displayAmount,
+      displayUnit: line.displayUnit,
+    });
+
+    return {
+      ...line,
+      product,
+      spec,
+      productId: product?.id || '',
+      specId: spec?.id || '',
+      productName: product?.name || '',
+      specLabel: spec?.label || '',
+      unitPrice: spec?.unitPrice || 0,
+      displayAmount: normalized.displayAmount,
+      displayUnit: normalized.displayUnit,
+      plannedWeight: normalized.plannedWeight,
+    };
+  });
+}
+
+function itemPayload(items: EntryItem[]) {
+  return items
+    .filter(item => item.product && item.spec && item.plannedWeight > 0)
+    .map(item => ({
+      productId: item.productId,
+      specId: item.specId,
+      productName: item.productName,
+      specLabel: item.specLabel,
+      unitPrice: item.unitPrice,
+      quantity: 1,
+      displayAmount: item.displayAmount,
+      displayUnit: item.displayUnit,
+      plannedWeight: item.plannedWeight,
+    }));
+}
+
+function EntryItemsEditor({
+  lines,
+  products,
+  onChange,
+}: {
+  lines: EntryLine[];
+  products: Product[];
+  onChange: (lines: EntryLine[]) => void;
+}) {
+  const items = useMemo(() => buildItems(lines, products), [lines, products]);
+
+  const stepAmount = (lineId: string, delta: number) => {
+    const line = lines.find(item => item.id === lineId);
+    if (!line) return;
+    const min = getTaskItemMin(line.displayUnit);
+    changeLine(lineId, {
+      displayAmount: Math.max(min, Number((line.displayAmount + delta).toFixed(1))),
+    });
+  };
+
+  const changeLine = (lineId: string, patch: Partial<EntryLine>) => {
+    onChange(lines.map((line) => {
+      if (line.id !== lineId) return line;
+      const next = { ...line, ...patch };
+      if (patch.productId) {
+        const product = products.find(item => item.id === patch.productId);
+        next.specId = product?.specs[0]?.id || '';
+      }
+      const normalized = normalizeTaskItemInput({
+        displayAmount: next.displayAmount,
+        displayUnit: next.displayUnit,
+      });
+      return {
+        ...next,
+        displayAmount: normalized.displayAmount,
+        displayUnit: normalized.displayUnit,
+      };
+    }));
+  };
+
+  const totalWeight = items.reduce((sum, item) => sum + item.plannedWeight, 0);
+
+  return (
+    <>
+      <div className="mobile-entry-lines">
+        {items.map((item) => (
+          <div key={item.id} className="mobile-entry-line">
+            <div className="mobile-entry-line__selectors">
+              <Select
+                value={item.productId || undefined}
+                onChange={(value) => changeLine(item.id, { productId: value })}
+                options={products.map(product => ({ value: product.id, label: product.name }))}
+                placeholder="商品"
+                size="large"
+              />
+              <Select
+                value={item.specId || undefined}
+                onChange={(value) => changeLine(item.id, { specId: value })}
+                options={(item.product?.specs || []).map(spec => ({ value: spec.id, label: spec.label }))}
+                placeholder="规格"
+                size="large"
+              />
+            </div>
+
+            <div className="mobile-entry-line__measure">
+              <div className="mobile-stepper">
+                <button
+                  type="button"
+                  onClick={() => stepAmount(item.id, -getTaskItemStep(item.displayUnit))}
+                  aria-label="减少"
+                >
+                  <Minus size={15} />
+                </button>
+                <InputNumber
+                  controls={false}
+                  min={getTaskItemMin(item.displayUnit)}
+                  step={getTaskItemStep(item.displayUnit)}
+                  value={item.displayAmount}
+                  onChange={(value) => changeLine(item.id, { displayAmount: Number(value || 0) })}
+                />
+                <button
+                  type="button"
+                  onClick={() => stepAmount(item.id, getTaskItemStep(item.displayUnit))}
+                  aria-label="增加"
+                >
+                  <Plus size={15} />
+                </button>
+              </div>
+              <Select
+                value={item.displayUnit}
+                onChange={(value) => changeLine(item.id, { displayUnit: value })}
+                options={TASK_ITEM_UNITS.map(unit => ({ value: unit, label: unit }))}
+              />
+              <button
+                type="button"
+                className="mobile-inline-action mobile-inline-action--danger"
+                onClick={() => onChange(lines.length === 1 ? lines : lines.filter(line => line.id !== item.id))}
+              >
+                删除
+              </button>
+            </div>
+
+            <div className="mobile-entry-line__total">
+              <span>{formatTaskItemMeasure(item.displayAmount, item.displayUnit)}</span>
+              <strong>{item.plannedWeight.toFixed(1)}斤</strong>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <button type="button" className="mobile-inline-action mobile-inline-action--full" onClick={() => onChange([...lines, createLine(products)])}>
+        + 添加商品
+      </button>
+
+      <div className="mobile-entry-total">
+        <span>合计</span>
+        <strong>{totalWeight.toFixed(1)} 斤</strong>
+      </div>
+    </>
+  );
+}
 
 export default function MobileTasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -97,53 +353,42 @@ export default function MobileTasks() {
   const [pasteText, setPasteText] = useState('');
   const [previewTasks, setPreviewTasks] = useState<PreviewTask[]>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewEditingId, setPreviewEditingId] = useState('');
   const [keyword, setKeyword] = useState('');
   const [selectedMerchantId, setSelectedMerchantId] = useState('');
-  const [selectedDate, setSelectedDate] = useState(dayjs().format('YYYY-MM-DD'));
+  const [selectedMonth, setSelectedMonth] = useState(dayjs().format('YYYY-MM'));
   const [manualMerchantId, setManualMerchantId] = useState('');
   const [taskDate, setTaskDate] = useState(dayjs().add(1, 'day').format('YYYY-MM-DD'));
-  const [routeEta, setRouteEta] = useState('');
-  const [manualLines, setManualLines] = useState<ManualLine[]>([]);
+  const [manualLines, setManualLines] = useState<EntryLine[]>([]);
   const navigate = useNavigate();
 
   const loadTasks = () => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (selectedDate) params.set('date', selectedDate);
-    if (selectedMerchantId) params.set('merchantId', selectedMerchantId);
-    api.get<Task[]>(`/tasks?${params.toString()}`).then(setTasks).finally(() => setLoading(false));
+    if (activeTab !== 'pending' && selectedMonth) params.set('month', selectedMonth);
+    if (activeTab !== 'pending' && selectedMerchantId) params.set('merchantId', selectedMerchantId);
+    api.get<Task[]>(`/tasks?${params.toString()}`)
+      .then((list) => setTasks(list))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => {
     loadTasks();
-  }, [selectedDate, selectedMerchantId]);
+  }, [activeTab, selectedMonth, selectedMerchantId]);
 
   useEffect(() => {
     api.get<Merchant[]>('/merchants')
       .then(list => setMerchants(list.filter(item => item.status !== '停用')))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
-  const createDefaultLine = (catalog: Product[]): ManualLine => {
-    const firstProduct = catalog[0];
-    const firstSpec = firstProduct?.specs[0];
-    return {
-      id: `line_${Math.random().toString(36).slice(2, 8)}`,
-      productId: firstProduct?.id || '',
-      specId: firstSpec?.id || '',
-      plannedWeight: 1,
-    };
-  };
-
-  const syncManualLines = (catalog: Product[], previousLines: ManualLine[]) => {
+  const syncLines = (catalog: Product[], previousLines: EntryLine[]) => {
     if (catalog.length === 0) return [];
-    if (previousLines.length === 0) return [createDefaultLine(catalog)];
+    if (previousLines.length === 0) return [createLine(catalog)];
 
     return previousLines.map((line) => {
       const product = catalog.find(item => item.id === line.productId) || catalog[0];
-      const specs = product?.specs || [];
-      const spec = specs.find(item => item.id === line.specId) || specs[0];
-
+      const spec = product?.specs.find(item => item.id === line.specId) || product?.specs[0];
       return {
         ...line,
         productId: product?.id || '',
@@ -158,8 +403,8 @@ export default function MobileTasks() {
     setEntryMode('paste');
     setPasteText('');
     setPreviewTasks([]);
+    setPreviewEditingId('');
     setTaskDate(dayjs().add(1, 'day').format('YYYY-MM-DD'));
-    setRouteEta('');
 
     try {
       const [merchantList, productList] = await Promise.all([
@@ -183,7 +428,7 @@ export default function MobileTasks() {
           ? currentId
           : activeMerchants[0]?.id || ''
       ));
-      setManualLines((currentLines) => syncManualLines(activeProducts, currentLines));
+      setManualLines((currentLines) => syncLines(activeProducts, currentLines));
     } catch (err: any) {
       message.error(err.message || '商户或商品数据加载失败');
     } finally {
@@ -192,47 +437,8 @@ export default function MobileTasks() {
   };
 
   const manualMerchant = merchants.find(item => item.id === manualMerchantId) || null;
-  const manualPreview = useMemo(() => manualLines.map((line) => {
-    const product = products.find(item => item.id === line.productId) || null;
-    const specs = product?.specs || [];
-    const spec = specs.find(item => item.id === line.specId) || specs[0] || null;
-
-    return {
-      ...line,
-      product,
-      spec,
-    };
-  }), [manualLines, products]);
-
-  const manualTotalWeight = manualPreview.reduce((sum, line) => sum + line.plannedWeight, 0);
-
-  const handleManualProductChange = (lineId: string, productId: string) => {
-    setManualLines(prev => prev.map((line) => {
-      if (line.id !== lineId) return line;
-      const product = products.find(item => item.id === productId);
-      return {
-        ...line,
-        productId,
-        specId: product?.specs[0]?.id || '',
-      };
-    }));
-  };
-
-  const handleManualSpecChange = (lineId: string, specId: string) => {
-    setManualLines(prev => prev.map((line) => line.id === lineId ? { ...line, specId } : line));
-  };
-
-  const handleManualWeightChange = (lineId: string, plannedWeight: number) => {
-    setManualLines(prev => prev.map((line) => line.id === lineId ? { ...line, plannedWeight } : line));
-  };
-
-  const handleAddManualLine = () => {
-    setManualLines(prev => [...prev, createDefaultLine(products)]);
-  };
-
-  const handleRemoveManualLine = (lineId: string) => {
-    setManualLines(prev => prev.length === 1 ? prev : prev.filter(line => line.id !== lineId));
-  };
+  const manualItems = useMemo(() => buildItems(manualLines, products), [manualLines, products]);
+  const previewEditing = previewTasks.find(task => task.id === previewEditingId) || null;
 
   const handleSubmitPaste = async () => {
     const normalizedText = pasteText.trim();
@@ -243,11 +449,12 @@ export default function MobileTasks() {
 
     setSubmitLoading(true);
     try {
-      const result = await api.post<{ tasks: PreviewTask[]; skippedMerchants: string[] }>('/tasks/preview-wechat', {
+      const result = await api.post<{ tasks: Array<Omit<PreviewTask, 'id'>>; skippedMerchants: string[] }>('/tasks/preview-wechat', {
         text: normalizedText,
         date: taskDate,
       });
-      setPreviewTasks(result.tasks);
+      setPreviewTasks(result.tasks.map(toPreviewTask));
+      setPreviewEditingId('');
       setPreviewOpen(true);
     } catch (err: any) {
       message.error(err.message);
@@ -262,19 +469,9 @@ export default function MobileTasks() {
       return;
     }
 
-    const items = manualPreview
-      .filter(line => line.product && line.spec && line.plannedWeight > 0)
-      .map(line => ({
-        productId: line.product!.id,
-        specId: line.spec!.id,
-        productName: line.product!.name,
-        specLabel: line.spec!.label,
-        unitPrice: line.spec!.unitPrice,
-        plannedWeight: line.plannedWeight,
-      }));
-
+    const items = itemPayload(manualItems);
     if (items.length === 0) {
-      message.warning('先补商品明细');
+      message.warning('先添加商品');
       return;
     }
 
@@ -288,13 +485,13 @@ export default function MobileTasks() {
         address: manualMerchant.address,
         phone: manualMerchant.phone,
         settlementDay: manualMerchant.settlementDay,
-        routeEta: routeEta.trim(),
+        routeEta: '',
         items,
       });
       message.success('任务已创建');
       setCreateOpen(false);
-      setRouteEta('');
-      setManualLines([createDefaultLine(products)]);
+      setManualLines([createLine(products)]);
+      setActiveTab('pending');
       loadTasks();
     } catch (err: any) {
       message.error(err.message);
@@ -303,15 +500,35 @@ export default function MobileTasks() {
     }
   };
 
+  const updatePreviewTask = (taskId: string, patch: Partial<PreviewTask>) => {
+    setPreviewTasks(prev => prev.map((task) => {
+      if (task.id !== taskId) return task;
+      const next = { ...task, ...patch };
+      return {
+        ...next,
+        plannedWeight: next.items.reduce((sum, item) => sum + item.plannedWeight, 0),
+      };
+    }));
+  };
+
+  const updatePreviewLines = (taskId: string, lines: EntryLine[]) => {
+    const items = itemPayload(buildItems(lines, products)).map(item => ({
+      ...item,
+      id: `${item.productId}_${item.specId}_${Math.random().toString(36).slice(2, 8)}`,
+    }));
+    updatePreviewTask(taskId, { items });
+  };
+
   const handleConfirmPreview = async () => {
-    if (previewTasks.length === 0) {
+    const importableTasks = previewTasks.filter(task => task.items.length > 0);
+    if (importableTasks.length === 0) {
       message.warning('没有可导入任务');
       return;
     }
 
     setSubmitLoading(true);
     try {
-      await Promise.all(previewTasks.map((task) => api.post('/tasks', {
+      await Promise.all(importableTasks.map((task) => api.post('/tasks', {
         taskDate: task.taskDate,
         merchantId: task.merchantId,
         merchantName: task.merchantName,
@@ -319,14 +536,16 @@ export default function MobileTasks() {
         address: task.address,
         phone: task.phone,
         settlementDay: task.settlementDay,
-        routeEta: task.routeEta,
+        routeEta: '',
         items: task.items,
       })));
-      message.success(`已导入 ${previewTasks.length} 个任务`);
+      message.success(`已导入 ${importableTasks.length} 个任务`);
       setPreviewOpen(false);
       setCreateOpen(false);
       setPasteText('');
       setPreviewTasks([]);
+      setPreviewEditingId('');
+      setActiveTab('pending');
       loadTasks();
     } catch (err: any) {
       message.error(err.message);
@@ -350,15 +569,21 @@ export default function MobileTasks() {
     });
   };
 
-  const pendingCount = tasks.filter(task => task.status !== '已完成' && task.status !== '异常').length;
-  const archivedCount = tasks.filter(task => task.status === '已完成' || task.status === '异常').length;
-  const pendingTasks = tasks.filter(task => task.status !== '已完成' && task.status !== '异常');
+  const pendingTasks = tasks
+    .filter(task => task.status !== '已完成' && task.status !== '异常')
+    .sort((a, b) => parseCreatedTime(b) - parseCreatedTime(a));
+  const allTasks = [...tasks].sort((a, b) => parseCreatedTime(b) - parseCreatedTime(a));
+  const archivedTasks = tasks
+    .filter(task => task.status === '已完成' || task.status === '异常')
+    .sort((a, b) => parseArchivedTime(b) - parseArchivedTime(a));
+  const monthPendingCount = tasks.filter(task => task.status !== '已完成' && task.status !== '异常').length;
+  const archivedCount = archivedTasks.length;
 
   const tabFiltered = activeTab === 'all'
-    ? tasks
+    ? allTasks
     : activeTab === 'pending'
-      ? tasks.filter(task => task.status !== '已完成' && task.status !== '异常')
-      : tasks.filter(task => task.status === '已完成' || task.status === '异常');
+      ? pendingTasks
+      : archivedTasks;
 
   const filtered = tabFiltered.filter((task) => {
     if (!keyword.trim()) return true;
@@ -366,13 +591,25 @@ export default function MobileTasks() {
     return task.merchantName.includes(value) || task.items.some(item => item.productName.includes(value));
   });
 
-  const pendingGroups = groupPendingTasks(pendingTasks).map((group) => {
-    const meta = PENDING_GROUPS.find(item => item.key === group.status);
-    return {
-      ...meta!,
-      tasks: group.tasks,
-    };
-  });
+  const pendingDateGroups = filtered.reduce<Array<{ taskDate: string; tasks: Task[] }>>((groups, task) => {
+    const group = groups.find(item => item.taskDate === task.taskDate);
+    if (group) {
+      group.tasks.push(task);
+    } else {
+      groups.push({ taskDate: task.taskDate, tasks: [task] });
+    }
+    return groups;
+  }, []);
+
+  const previewLines = previewEditing
+    ? previewEditing.items.map(item => ({
+      id: item.id,
+      productId: item.productId,
+      specId: item.specId,
+      displayAmount: item.displayAmount,
+      displayUnit: item.displayUnit,
+    }))
+    : [];
 
   if (loading) {
     return (
@@ -386,15 +623,15 @@ export default function MobileTasks() {
     <div className="mobile-page">
       <section className="mobile-hero mobile-rise">
         <div className="mobile-hero__corner">
-          <span>总任务</span>
-          <strong>{tasks.length}</strong>
+          <span>任务</span>
+          <strong>{filtered.length}</strong>
         </div>
 
         <div className="mobile-hero__eyebrow">任务总览</div>
-        <div className="mobile-hero__title">全部任务</div>
+        <div className="mobile-hero__title">{activeTab === 'pending' ? '待处理' : activeTab === 'completed' ? '已归档' : '全部任务'}</div>
         <div className="mobile-hero__meta">
-          <span>{selectedDate}</span>
-          <span>待处理 {pendingCount} 单</span>
+          <span>{activeTab === 'pending' ? '全部待处理' : selectedMonth}</span>
+          <span>待处理 {monthPendingCount} 单</span>
           <span>已归档 {archivedCount} 单</span>
         </div>
       </section>
@@ -421,12 +658,7 @@ export default function MobileTasks() {
       {activeTab !== 'pending' ? (
         <div className="mobile-task-filters mobile-rise" style={{ animationDelay: '100ms' }}>
           <div className="mobile-task-filters__row">
-            <DatePicker
-              value={dayjs(selectedDate)}
-              onChange={(value) => setSelectedDate((value || dayjs()).format('YYYY-MM-DD'))}
-              allowClear={false}
-              style={{ width: '100%' }}
-            />
+            <MobileDateField value={selectedMonth} onChange={setSelectedMonth} precision="month" />
             <Select
               allowClear
               value={selectedMerchantId || undefined}
@@ -450,42 +682,36 @@ export default function MobileTasks() {
       />
 
       {activeTab === 'pending' ? (
-        pendingGroups.length === 0 ? (
-          <EmptyState title="待处理清空了" description="现在可以去看全部任务或继续录单" />
+        pendingDateGroups.length === 0 ? (
+          <EmptyState title="待处理清空了" />
         ) : (
           <div className="mobile-pending-board">
-            {pendingGroups.map((group, groupIndex) => {
-              const Icon = group.icon;
-              return (
-                <section
-                  key={group.key}
-                  className="mobile-pending-group mobile-rise"
-                  style={{ animationDelay: `${120 + groupIndex * 70}ms` }}
-                >
-                  <div className="mobile-pending-group__head">
-                    <div className="mobile-pending-group__badge">
-                      <Icon size={18} />
-                    </div>
-                    <div>
-                      <div className="mobile-pending-group__title">{group.label}</div>
-                      <div className="mobile-pending-group__desc">{group.desc}</div>
-                    </div>
-                    <div className="mobile-pending-group__count">{group.tasks.length}</div>
+            {pendingDateGroups.map((group, groupIndex) => (
+              <section
+                key={group.taskDate}
+                className="mobile-pending-group mobile-rise"
+                style={{ animationDelay: `${120 + groupIndex * 70}ms` }}
+              >
+                <div className="mobile-pending-group__head">
+                  <div className="mobile-pending-group__badge">
+                    <Package size={18} />
                   </div>
+                  <div className="mobile-pending-group__title">{group.taskDate}</div>
+                  <div className="mobile-pending-group__count">{group.tasks.length}</div>
+                </div>
 
-                  <div className="mobile-pending-stack">
-                    {group.tasks.map((task) => (
-                      <TaskCard
-                        key={task.id}
-                        task={task}
-                        onClick={() => navigate(`/mobile/tasks/${task.id}`)}
-                        onDelete={task.status === '待配货' ? () => handleDeleteTask(task) : undefined}
-                      />
-                    ))}
-                  </div>
-                </section>
-              );
-            })}
+                <div className="mobile-pending-stack">
+                  {group.tasks.map((task) => (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      onClick={() => navigate(`/mobile/tasks/${task.id}`)}
+                      onDelete={task.status === '待配货' ? () => handleDeleteTask(task) : undefined}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
           </div>
         )
       ) : filtered.length === 0 ? (
@@ -495,6 +721,7 @@ export default function MobileTasks() {
           <TaskCard
             key={task.id}
             task={task}
+            lead={task.taskDate}
             delayMs={150 + index * 60}
             onClick={() => navigate(`/mobile/tasks/${task.id}`)}
             onDelete={task.status === '待配货' ? () => handleDeleteTask(task) : undefined}
@@ -512,10 +739,7 @@ export default function MobileTasks() {
         closeIcon={null}
       >
         <div className="mobile-sheet__head">
-          <div>
-            <div className="mobile-sheet__title">新增任务</div>
-            <div className="mobile-sheet__desc">批量导入先预览确认，手动补录直接保存</div>
-          </div>
+          <div className="mobile-sheet__title">新增任务</div>
           <button type="button" className="mobile-sheet__close" onClick={() => setCreateOpen(false)}>
             关闭
           </button>
@@ -536,7 +760,7 @@ export default function MobileTasks() {
             onClick={() => setEntryMode('manual')}
           >
             <FileText size={16} />
-            <span>手动补录</span>
+            <span>手动录入</span>
           </button>
         </div>
 
@@ -546,32 +770,20 @@ export default function MobileTasks() {
           </div>
         ) : entryMode === 'paste' ? (
           <div className="mobile-entry-panel">
-            <div className="mobile-entry-tip">适合直接复制聊天记录，先生成预览，再人工确认导入</div>
-            <div className="mobile-field-card__label">批量导入日期</div>
-            <DatePicker
-              value={dayjs(taskDate)}
-              onChange={(value) => setTaskDate((value || dayjs().add(1, 'day')).format('YYYY-MM-DD'))}
-              allowClear={false}
-              style={{ width: '100%' }}
-            />
+            <div className="mobile-field-card__label">预计配送日期</div>
+            <MobileDateField value={taskDate} onChange={setTaskDate} />
             <div className="mobile-field-card__label">批量导入内容</div>
             <Input.TextArea
               rows={10}
               value={pasteText}
               onChange={(event) => setPasteText(event.target.value)}
-              placeholder={'可直接粘贴多行\n例如\n东桥 明天早上一盘\n刘记 明天送豆腐，黑豆腐少送，豆干3斤\n东桥超市：豆腐20斤，黑豆腐10斤'}
+              placeholder={'东桥：明天早上一盘\n刘记：明天送豆腐，黑豆腐少送，豆干3斤\n东桥超市：豆腐2筐，黑豆腐10斤'}
             />
           </div>
         ) : (
           <div className="mobile-entry-panel">
-            <div className="mobile-entry-tip">适合临时补单，商户和商品都来自管理页的最新数据</div>
-            <div className="mobile-field-card__label">录单日期</div>
-            <DatePicker
-              value={dayjs(taskDate)}
-              onChange={(value) => setTaskDate((value || dayjs().add(1, 'day')).format('YYYY-MM-DD'))}
-              allowClear={false}
-              style={{ width: '100%' }}
-            />
+            <div className="mobile-field-card__label">预计配送日期</div>
+            <MobileDateField value={taskDate} onChange={setTaskDate} />
             <div className="mobile-field-card__label">商户</div>
             <Select
               value={manualMerchantId || undefined}
@@ -592,50 +804,7 @@ export default function MobileTasks() {
               </div>
             </div>
 
-            <div className="mobile-field-card__label">预计配送时间</div>
-            <Input value={routeEta} onChange={(event) => setRouteEta(event.target.value)} placeholder="预计配送时间 如 07:30" />
-
-            <div className="mobile-entry-lines">
-              {manualPreview.map((line) => (
-                <div key={line.id} className="mobile-entry-line">
-                  <Select
-                    value={line.productId || undefined}
-                    onChange={(value) => handleManualProductChange(line.id, value)}
-                    options={products.map(item => ({ value: item.id, label: item.name }))}
-                    placeholder="选择商品"
-                    size="large"
-                  />
-                  <Select
-                    value={line.specId || undefined}
-                    onChange={(value) => handleManualSpecChange(line.id, value)}
-                    options={(line.product?.specs || []).map(item => ({ value: item.id, label: item.label }))}
-                    placeholder="选择规格"
-                    size="large"
-                  />
-                  <div className="mobile-entry-line__foot">
-                    <InputNumber
-                      min={0.5}
-                      step={0.5}
-                      value={line.plannedWeight}
-                      onChange={(value) => handleManualWeightChange(line.id, Number(value || 0))}
-                      addonAfter="斤"
-                    />
-                    <button type="button" className="mobile-inline-action" onClick={() => handleRemoveManualLine(line.id)}>
-                      删除
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <button type="button" className="mobile-inline-action mobile-inline-action--full" onClick={handleAddManualLine}>
-              + 继续添加商品
-            </button>
-
-            <div className="mobile-entry-total">
-              <span>总重量</span>
-              <strong>{manualTotalWeight.toFixed(1)} 斤</strong>
-            </div>
+            <EntryItemsEditor lines={manualLines} products={products} onChange={setManualLines} />
           </div>
         )}
 
@@ -659,70 +828,101 @@ export default function MobileTasks() {
         open={previewOpen}
         onClose={() => setPreviewOpen(false)}
         placement="bottom"
-        height="82vh"
+        height="86vh"
         rootClassName="mobile-sheet"
         closeIcon={null}
       >
         <div className="mobile-sheet__head">
-          <div>
-            <div className="mobile-sheet__title">导入预览</div>
-            <div className="mobile-sheet__desc">确认商户、规格和重量都对，再真正新增任务</div>
-          </div>
-          <button type="button" className="mobile-sheet__close" onClick={() => setPreviewOpen(false)}>
-            关闭
+          <div className="mobile-sheet__title">{previewEditing ? previewEditing.merchantName : '导入预览'}</div>
+          <button
+            type="button"
+            className="mobile-sheet__close"
+            onClick={() => previewEditing ? setPreviewEditingId('') : setPreviewOpen(false)}
+          >
+            {previewEditing ? '返回' : '关闭'}
           </button>
         </div>
 
-        <div className="mobile-record-stack">
-          {previewTasks.map((task) => (
-            <div key={`${task.merchantId}_${task.merchantName}`} className="mobile-record-card">
-              <div className="mobile-record-card__head">
-                <div>
-                  <div className="mobile-record-card__title">{task.merchantName}</div>
-                  <div className="mobile-record-card__meta">
-                    <span>{task.phone || '无电话'}</span>
-                    <span>{task.settlementDay || '未设置结算日'}</span>
-                  </div>
-                </div>
-                <div className="mobile-record-card__stat">
-                  <span>总重量</span>
-                  <strong>{task.plannedWeight}</strong>
-                </div>
+        {previewEditing ? (
+          <div className="mobile-entry-panel">
+            <div className="mobile-field-card__label">预计配送日期</div>
+            <MobileDateField
+              value={previewEditing.taskDate}
+              onChange={(value) => updatePreviewTask(previewEditing.id, { taskDate: value })}
+            />
+            <div className="mobile-entry-summary">
+              <div className="mobile-entry-summary__card">
+                <span>结算日</span>
+                <strong>{previewEditing.settlementDay || '-'}</strong>
               </div>
-
-              <div className="mobile-record-card__rows">
-                {task.items.map((item) => (
-                  <div key={`${task.merchantId}_${item.productId}_${item.specId}`} className="mobile-record-card__row">
-                    <div>
-                      <div>{item.productName}</div>
-                      <div className="mobile-record-card__dim">{item.specLabel}</div>
+              <div className="mobile-entry-summary__card">
+                <span>电话</span>
+                <strong>{previewEditing.phone || '-'}</strong>
+              </div>
+            </div>
+            <EntryItemsEditor
+              lines={previewLines}
+              products={products}
+              onChange={(lines) => updatePreviewLines(previewEditing.id, lines)}
+            />
+          </div>
+        ) : (
+          <div className="mobile-record-stack mobile-entry-panel">
+            {previewTasks.map((task) => (
+              <div key={task.id} className="mobile-record-card mobile-record-card--button" onClick={() => setPreviewEditingId(task.id)}>
+                <div className="mobile-record-card__head">
+                  <div>
+                    <div className="mobile-record-card__title">{task.merchantName}</div>
+                    <div className="mobile-record-card__meta">
+                      <span>{task.taskDate}</span>
+                      <span>{task.items.length} 项</span>
                     </div>
-                    <strong>{item.plannedWeight} 斤</strong>
                   </div>
-                ))}
-              </div>
+                  <div className="mobile-record-card__stat">
+                    <span>应配</span>
+                    <strong>{task.plannedWeight.toFixed(1)}</strong>
+                  </div>
+                  <div className="mobile-record-card__open">
+                    <ChevronRight size={18} />
+                  </div>
+                </div>
 
-              {task.warnings && task.warnings.length > 0 ? (
-                <div className="mobile-record-card__warnings">
-                  {task.warnings.map((warning) => (
-                    <div key={warning} className="mobile-record-card__warning">
-                      {warning}
+                <div className="mobile-record-card__rows">
+                  {task.items.map((item) => (
+                    <div key={item.id} className="mobile-record-card__row">
+                      <div>
+                        <div>{item.productName}</div>
+                        <div className="mobile-record-card__dim">{item.specLabel}</div>
+                      </div>
+                      <strong>{formatTaskItemMeasure(item.displayAmount, item.displayUnit)}</strong>
                     </div>
                   ))}
                 </div>
-              ) : null}
-            </div>
-          ))}
-        </div>
 
-        <div className="mobile-sheet__actions">
-          <Button onClick={() => setPreviewOpen(false)} size="large">
-            返回修改
-          </Button>
-          <Button type="primary" size="large" loading={submitLoading} onClick={handleConfirmPreview}>
-            确认新增
-          </Button>
-        </div>
+                {task.warnings && task.warnings.length > 0 ? (
+                  <div className="mobile-record-card__warnings">
+                    {task.warnings.map((warning) => (
+                      <div key={warning} className="mobile-record-card__warning">
+                        {warning}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {!previewEditing ? (
+          <div className="mobile-sheet__actions">
+            <Button onClick={() => setPreviewOpen(false)} size="large">
+              返回修改
+            </Button>
+            <Button type="primary" size="large" loading={submitLoading} onClick={handleConfirmPreview}>
+              确认新增
+            </Button>
+          </div>
+        ) : null}
       </Drawer>
     </div>
   );

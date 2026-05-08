@@ -1,3 +1,5 @@
+import { normalizeTaskItemInput, normalizeTaskItemUnit, type TaskItemUnit } from '../../src/shared/task-item.js';
+
 /**
  * 解析微信订货文本
  * 格式示例：
@@ -17,16 +19,48 @@ export function normalizeOrderText(text: string) {
 
 export function parseWeChatText(text: string): Array<{
   merchantName: string;
-  items: Array<{ name: string; weight: number }>;
+  items: Array<{ name: string; amount: number; unit: TaskItemUnit; weight: number }>;
   warnings?: string[];
 }> {
   const normalizedText = normalizeOrderText(text);
   const lines = normalizedText.split('\n').map(l => l.trim()).filter(Boolean);
-  const result: Array<{ merchantName: string; items: Array<{ name: string; weight: number }>; warnings?: string[] }> = [];
+  const result: Array<{
+    merchantName: string;
+    items: Array<{ name: string; amount: number; unit: TaskItemUnit; weight: number }>;
+    warnings?: string[];
+  }> = [];
+
+  const createMeasuredItem = (name: string, amount: number, unit: TaskItemUnit) => {
+    const normalized = normalizeTaskItemInput({ displayAmount: amount, displayUnit: unit });
+    return {
+      name: name.trim(),
+      amount: normalized.displayAmount,
+      unit: normalized.displayUnit,
+      weight: normalized.plannedWeight,
+    };
+  };
+
+  const parseMeasuredItem = (textValue: string) => {
+    const measuredMatch = textValue.trim().match(/^(.+?)\s*(\d+(?:\.\d+)?)\s*(斤|公斤|千克|kg|KG|筐|盘)$/);
+    if (!measuredMatch) return null;
+
+    const rawUnit = measuredMatch[3];
+    const unit = /^(公斤|千克|kg|KG)$/i.test(rawUnit)
+      ? '公斤'
+      : /^(筐|盘)$/.test(rawUnit)
+        ? '筐'
+        : '斤';
+
+    return createMeasuredItem(
+      measuredMatch[1].replace(/^(送|来|要)/, '').trim(),
+      parseFloat(measuredMatch[2]),
+      normalizeTaskItemUnit(unit),
+    );
+  };
 
   const parseColloquialItems = (merchantName: string, textValue: string): {
     merchantName: string;
-    items: Array<{ name: string; weight: number }>;
+    items: Array<{ name: string; amount: number; unit: TaskItemUnit; weight: number }>;
     warnings?: string[];
   } | null => {
     const cleaned = textValue
@@ -40,7 +74,7 @@ export function parseWeChatText(text: string): Array<{
       .map(item => item.trim())
       .filter(Boolean);
 
-    const items: Array<{ name: string; weight: number }> = [];
+    const items: Array<{ name: string; amount: number; unit: TaskItemUnit; weight: number }> = [];
     const warnings: string[] = [];
 
     for (const part of parts) {
@@ -50,25 +84,19 @@ export function parseWeChatText(text: string): Array<{
       }
 
       if ((/(一盘|1盘|一筐|1筐)/.test(part) && part.includes('豆腐')) || /^(一盘|1盘|一筐|1筐)$/.test(part)) {
-        items.push({ name: '豆腐', weight: 12 });
+        items.push(createMeasuredItem('豆腐', 1, '筐'));
         continue;
       }
 
-      const weightedMatch = part.match(/^(.+?)\s*(\d+(?:\.\d+)?)\s*斤$/);
-      if (weightedMatch) {
-        items.push({
-          name: weightedMatch[1].replace(/^(送|来|要)/, '').trim(),
-          weight: parseFloat(weightedMatch[2]),
-        });
+      const measuredItem = parseMeasuredItem(part);
+      if (measuredItem) {
+        items.push(measuredItem);
         continue;
       }
 
-      const defaultTofuMatch = part.match(/^(?:送)?(黑豆腐|脆皮豆腐|精品豆腐|豆腐|豆干)$/);
+      const defaultTofuMatch = part.match(/^(?:送)?(黑豆腐|脆皮豆腐|精品豆腐|豆腐)$/);
       if (defaultTofuMatch) {
-        items.push({
-          name: defaultTofuMatch[1].trim(),
-          weight: 12,
-        });
+        items.push(createMeasuredItem(defaultTofuMatch[1].trim(), 1, '筐'));
         continue;
       }
     }
@@ -100,16 +128,12 @@ export function parseWeChatText(text: string): Array<{
 
     // 解析商品：支持中文逗号、英文逗号、顿号分隔
     const itemParts = itemsStr.split(/[,，、]\s*/);
-    const items: Array<{ name: string; weight: number }> = [];
+    const items: Array<{ name: string; amount: number; unit: TaskItemUnit; weight: number }> = [];
 
     for (const part of itemParts) {
-      // 匹配：商品名 + 数字 + 斤
-      const itemMatch = part.trim().match(/^(.+?)\s*(\d+(?:\.\d+)?)\s*斤?$/);
-      if (itemMatch) {
-        items.push({
-          name: itemMatch[1].trim(),
-          weight: parseFloat(itemMatch[2]),
-        });
+      const measuredItem = parseMeasuredItem(part);
+      if (measuredItem) {
+        items.push(measuredItem);
       }
     }
 

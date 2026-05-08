@@ -54,6 +54,7 @@ sqlite.exec(`
     product_id TEXT NOT NULL, spec_id TEXT NOT NULL,
     product_name TEXT NOT NULL, spec_label TEXT NOT NULL,
     unit_price REAL NOT NULL, quantity INTEGER NOT NULL DEFAULT 1,
+    display_amount REAL NOT NULL DEFAULT 0, display_unit TEXT NOT NULL DEFAULT '斤',
     planned_weight REAL NOT NULL DEFAULT 0, actual_weight REAL NOT NULL DEFAULT 0
   );
   CREATE TABLE IF NOT EXISTS settlements (
@@ -85,7 +86,7 @@ const insertMerchant = sqlite.prepare(`INSERT OR IGNORE INTO merchants (id, name
 const insertProduct = sqlite.prepare(`INSERT OR IGNORE INTO products (id, name, category) VALUES (?, ?, ?)`);
 const insertSpec = sqlite.prepare(`INSERT OR IGNORE INTO product_specs (id, product_id, label, unit_price, sort_order) VALUES (?, ?, ?, ?, ?)`);
 const insertTask = sqlite.prepare(`INSERT OR IGNORE INTO delivery_tasks (id, task_date, merchant_id, merchant_name, merchant_type, address, phone, route_eta, status, settlement_day, planned_weight, actual_weight, photo_count, before_basket_count, sent_basket_count, returned_basket_count, sign_method, operator) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-const insertTaskItem = sqlite.prepare(`INSERT OR IGNORE INTO task_items (id, task_id, product_id, spec_id, product_name, spec_label, unit_price, quantity, planned_weight, actual_weight) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+const insertTaskItem = sqlite.prepare(`INSERT OR IGNORE INTO task_items (id, task_id, product_id, spec_id, product_name, spec_label, unit_price, quantity, display_amount, display_unit, planned_weight, actual_weight) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
 const insertUser = sqlite.prepare(`INSERT OR IGNORE INTO users (id, username, password_hash, display_name, role) VALUES (?, ?, ?, ?, ?)`);
 
 // Users
@@ -120,18 +121,18 @@ insertSpec.run('spec_crispy_tofu_6', 'prod_crispy_tofu', '常规价 ¥6/斤', 6,
 const today = '2026-05-08';
 
 insertTask.run('task_dongqiao', today, 'merchant_dongqiao', '东桥生活超市', '超市', '东桥路示例地址', '', '07:10', '待复秤', '每月 5 日', 42, 0, 0, 8, 0, 0, '', adminDisplayName);
-insertTaskItem.run('ti_1', 'task_dongqiao', 'prod_tofu', 'spec_tofu_25', '豆腐', '精品价 ¥2.5/斤', 2.5, 1, 20, 0);
-insertTaskItem.run('ti_2', 'task_dongqiao', 'prod_black_tofu', 'spec_black_tofu_4', '黑豆腐', '常规价 ¥4/斤', 4, 1, 10, 0);
-insertTaskItem.run('ti_3', 'task_dongqiao', 'prod_crispy_tofu', 'spec_crispy_tofu_6', '脆皮豆腐', '常规价 ¥6/斤', 6, 1, 12, 0);
+insertTaskItem.run('ti_1', 'task_dongqiao', 'prod_tofu', 'spec_tofu_25', '豆腐', '精品价 ¥2.5/斤', 2.5, 1, 20, '斤', 20, 0);
+insertTaskItem.run('ti_2', 'task_dongqiao', 'prod_black_tofu', 'spec_black_tofu_4', '黑豆腐', '常规价 ¥4/斤', 4, 1, 10, '斤', 10, 0);
+insertTaskItem.run('ti_3', 'task_dongqiao', 'prod_crispy_tofu', 'spec_crispy_tofu_6', '脆皮豆腐', '常规价 ¥6/斤', 6, 1, 12, '斤', 12, 0);
 
 insertTask.run('task_liuji', today, 'merchant_liuji', '刘记早餐摊', '小商贩', '城南早市示例摊位', '', '07:30', '待配货', '每周日', 26, 0, 0, 4, 0, 0, '', adminDisplayName);
-insertTaskItem.run('ti_4', 'task_liuji', 'prod_tofu', 'spec_tofu_2', '豆腐', '常规价 ¥2/斤', 2, 1, 12, 0);
-insertTaskItem.run('ti_5', 'task_liuji', 'prod_dry_tofu', 'spec_seasoned_dry_6', '豆干（调味）', '调味 ¥6/斤', 6, 1, 8, 0);
-insertTaskItem.run('ti_6', 'task_liuji', 'prod_dry_tofu', 'spec_plain_dry_5', '豆干（未调味）', '未调味 ¥5/斤', 5, 1, 6, 0);
+insertTaskItem.run('ti_4', 'task_liuji', 'prod_tofu', 'spec_tofu_2', '豆腐', '常规价 ¥2/斤', 2, 1, 1, '筐', 12, 0);
+insertTaskItem.run('ti_5', 'task_liuji', 'prod_dry_tofu', 'spec_seasoned_dry_6', '豆干（调味）', '调味 ¥6/斤', 6, 1, 8, '斤', 8, 0);
+insertTaskItem.run('ti_6', 'task_liuji', 'prod_dry_tofu', 'spec_plain_dry_5', '豆干（未调味）', '未调味 ¥5/斤', 5, 1, 6, '斤', 6, 0);
 
 insertTask.run('task_lingshou', today, 'merchant_lingshou', '散户零售', '散户', '门店现场自提', '', '随到随卖', '待送达', '当日结清', 9, 9.2, 1, 0, 0, 0, '', adminDisplayName);
-insertTaskItem.run('ti_7', 'task_lingshou', 'prod_tofu', 'spec_tofu_2', '豆腐', '常规价 ¥2/斤', 2, 1, 4, 4.2);
-insertTaskItem.run('ti_8', 'task_lingshou', 'prod_crispy_tofu', 'spec_crispy_tofu_6', '脆皮豆腐', '常规价 ¥6/斤', 6, 1, 5, 5);
+insertTaskItem.run('ti_7', 'task_lingshou', 'prod_tofu', 'spec_tofu_2', '豆腐', '常规价 ¥2/斤', 2, 1, 4, '斤', 4, 4.2);
+insertTaskItem.run('ti_8', 'task_lingshou', 'prod_crispy_tofu', 'spec_crispy_tofu_6', '脆皮豆腐', '常规价 ¥6/斤', 6, 1, 5, '斤', 5, 5);
 
 sqlite.close();
 console.log('Seed data inserted successfully!');

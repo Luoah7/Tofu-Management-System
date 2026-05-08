@@ -12,6 +12,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { formatWeight } from '@/utils/format';
+import { formatTaskItemMeasure, type TaskItemUnit } from '@/shared/task-item';
 
 type StatusTone = 'blue' | 'amber' | 'orange' | 'green' | 'red' | 'slate';
 
@@ -93,6 +94,8 @@ export function EmptyState({ title, description, icon: Icon = CheckCircle2 }: Em
 type TaskCardItem = {
   productName: string;
   plannedWeight: number;
+  displayAmount?: number;
+  displayUnit?: TaskItemUnit;
 };
 
 export type TaskCardTask = {
@@ -176,7 +179,7 @@ export function TaskCard({ task, onClick, onDelete, lead, delayMs = 0 }: TaskCar
         <div className="task-card__chips">
           {previewItems.map(item => (
             <span key={`${task.id}_${item.productName}`} className="task-card__chip">
-              {item.productName} {formatWeight(item.plannedWeight)}
+              {item.productName} {item.displayAmount ? formatTaskItemMeasure(item.displayAmount, item.displayUnit) : formatWeight(item.plannedWeight)}
             </span>
           ))}
           {restCount > 0 ? <span className="task-card__chip task-card__chip--more">+{restCount} 项</span> : null}

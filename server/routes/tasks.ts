@@ -8,9 +8,13 @@ import { matchProductWithModel } from '../utils/product-matcher.js';
 import { recognizeWeightFromImage } from '../utils/weigh-recognizer.js';
 import { v4 as uuid } from 'uuid';
 import { getTaskPhotoUrl, removeTaskPhoto, saveTaskPhoto } from '../uploads.js';
+import { normalizeTaskItemInput } from '../../src/shared/task-item.js';
 
 const tasksRoutes = new Hono();
 tasksRoutes.use('*', authMiddleware);
+
+const PHOTO_STAGE_WEIGH = '复秤';
+const PHOTO_STAGE_DELIVERY = '送达';
 
 function normalizeMerchantName(name: string) {
   return name
@@ -55,13 +59,80 @@ async function listTaskPhotos(taskId: string) {
   }));
 }
 
+async function insertTaskPhotos(taskId: string, stage: string, files: File[]) {
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) {
+      throw new Error('只能上传图片');
+    }
+
+    const fileName = `${uuid()}${getPhotoExtension(file)}`;
+    const bytes = Buffer.from(await file.arrayBuffer());
+    await saveTaskPhoto(taskId, fileName, bytes, file.type || 'image/jpeg');
+
+    await db.insert(taskPhotos).values({
+      id: `photo_${uuid().slice(0, 8)}`,
+      taskId,
+      stage,
+      fileName,
+      originalName: file.name || fileName,
+      mimeType: file.type || 'image/jpeg',
+      fileSize: file.size,
+    });
+  }
+}
+
+async function replaceTaskStagePhotos(taskId: string, stage: string, files: File[]) {
+  const existing = await db.select().from(taskPhotos).where(and(eq(taskPhotos.taskId, taskId), eq(taskPhotos.stage, stage)));
+  for (const photo of existing) {
+    await removeTaskPhoto(taskId, photo.fileName);
+  }
+  await db.delete(taskPhotos).where(and(eq(taskPhotos.taskId, taskId), eq(taskPhotos.stage, stage)));
+  await insertTaskPhotos(taskId, stage, files);
+}
+
+async function countTaskPhotos(taskId: string) {
+  const photos = await db.select().from(taskPhotos).where(eq(taskPhotos.taskId, taskId));
+  return photos.length;
+}
+
+function getTaskDate(offsetDays = 0) {
+  const date = new Date(Date.now() + offsetDays * 24 * 60 * 60 * 1000);
+  const shanghai = new Date(date.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
+  const year = shanghai.getFullYear();
+  const month = String(shanghai.getMonth() + 1).padStart(2, '0');
+  const day = String(shanghai.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeIncomingItem(item: any) {
+  const displayAmount = Number(item.displayAmount ?? item.amount ?? item.plannedWeight ?? 0);
+  const normalized = normalizeTaskItemInput({
+    displayAmount,
+    displayUnit: item.displayUnit ?? item.unit ?? '斤',
+  });
+
+  return {
+    productId: item.productId || '',
+    specId: item.specId || '',
+    productName: item.name || item.productName || '',
+    specLabel: item.specLabel || '',
+    unitPrice: item.unitPrice || 0,
+    quantity: item.quantity || 1,
+    displayAmount: normalized.displayAmount,
+    displayUnit: normalized.displayUnit,
+    plannedWeight: normalized.plannedWeight,
+  };
+}
+
 // 列表
 tasksRoutes.get('/', async (c) => {
   const date = c.req.query('date');
+  const month = c.req.query('month');
   const status = c.req.query('status');
   const merchantId = c.req.query('merchantId');
   const conditions = [];
   if (date) conditions.push(eq(deliveryTasks.taskDate, date));
+  if (month) conditions.push(like(deliveryTasks.taskDate, `${month}%`));
   if (status) conditions.push(eq(deliveryTasks.status, status));
   if (merchantId) conditions.push(eq(deliveryTasks.merchantId, merchantId));
 
@@ -134,11 +205,12 @@ tasksRoutes.get('/:id', async (c) => {
 tasksRoutes.post('/', async (c) => {
   const body = await c.req.json<any>();
   const id = `task_${uuid().slice(0, 8)}`;
-  const today = new Date().toISOString().slice(0, 10);
+  const taskDate = body.taskDate || getTaskDate(1);
+  const normalizedItems = Array.isArray(body.items) ? body.items.map(normalizeIncomingItem) : [];
 
   await db.insert(deliveryTasks).values({
     id,
-    taskDate: body.taskDate || today,
+    taskDate,
     merchantId: body.merchantId,
     merchantName: body.merchantName || '',
     merchantType: body.merchantType || '',
@@ -147,22 +219,24 @@ tasksRoutes.post('/', async (c) => {
     routeEta: body.routeEta || '',
     status: '待配货',
     settlementDay: body.settlementDay || '',
-    plannedWeight: body.items?.reduce((s: number, i: any) => s + (i.plannedWeight || 0), 0) || 0,
+    plannedWeight: normalizedItems.reduce((sum: number, item: any) => sum + item.plannedWeight, 0),
     operator: body.operator || '',
   });
 
-  if (body.items) {
-    for (const item of body.items) {
+  if (normalizedItems.length > 0) {
+    for (const item of normalizedItems) {
       await db.insert(taskItems).values({
         id: `ti_${uuid().slice(0, 8)}`,
         taskId: id,
-        productId: item.productId || '',
-        specId: item.specId || '',
-        productName: item.name || item.productName || '',
-        specLabel: item.specLabel || '',
-        unitPrice: item.unitPrice || 0,
-        quantity: item.quantity || 1,
-        plannedWeight: item.plannedWeight || 0,
+        productId: item.productId,
+        specId: item.specId,
+        productName: item.productName,
+        specLabel: item.specLabel,
+        unitPrice: item.unitPrice,
+        quantity: item.quantity,
+        displayAmount: item.displayAmount,
+        displayUnit: item.displayUnit,
+        plannedWeight: item.plannedWeight,
       });
     }
   }
@@ -175,7 +249,7 @@ tasksRoutes.post('/', async (c) => {
 // 微信文本解析生成任务
 tasksRoutes.post('/parse-wechat', async (c) => {
   const { text, date } = await c.req.json<{ text: string; date?: string }>();
-  const taskDate = date || new Date().toISOString().slice(0, 10);
+  const taskDate = date || getTaskDate(1);
 
   const parsed = await parseOrderText(text);
   if (parsed.length === 0) {
@@ -213,6 +287,8 @@ tasksRoutes.post('/parse-wechat', async (c) => {
           name: matched.name,
           specLabel: matched.specLabel,
           unitPrice: matched.unitPrice,
+          displayAmount: item.amount || item.weight,
+          displayUnit: item.unit || '斤',
           plannedWeight: item.weight,
         });
         totalWeight += item.weight;
@@ -245,6 +321,8 @@ tasksRoutes.post('/parse-wechat', async (c) => {
         productName: item.name,
         specLabel: item.specLabel,
         unitPrice: item.unitPrice,
+        displayAmount: item.displayAmount,
+        displayUnit: item.displayUnit,
         plannedWeight: item.plannedWeight,
       });
     }
@@ -266,7 +344,7 @@ tasksRoutes.post('/parse-wechat', async (c) => {
 
 tasksRoutes.post('/preview-wechat', async (c) => {
   const { text, date } = await c.req.json<{ text: string; date?: string }>();
-  const taskDate = date || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const taskDate = date || getTaskDate(1);
 
   const parsed = await parseOrderText(text);
   if (parsed.length === 0) {
@@ -304,6 +382,8 @@ tasksRoutes.post('/preview-wechat', async (c) => {
         productName: matched.name,
         specLabel: matched.specLabel,
         unitPrice: matched.unitPrice,
+        displayAmount: item.amount || item.weight,
+        displayUnit: item.unit || '斤',
         plannedWeight: item.weight,
       });
       totalWeight += item.weight;
@@ -398,34 +478,16 @@ tasksRoutes.put('/:id/weigh', async (c) => {
     return c.json({ error: '复秤时请一起上传照片' }, 400);
   }
 
-  const existing = await db.select().from(taskPhotos).where(eq(taskPhotos.taskId, id));
-  for (const photo of existing) {
-    await removeTaskPhoto(id, photo.fileName);
+  try {
+    await replaceTaskStagePhotos(id, PHOTO_STAGE_WEIGH, files);
+  } catch (error: any) {
+    return c.json({ error: error.message || '照片上传失败' }, 400);
   }
-  await db.delete(taskPhotos).where(eq(taskPhotos.taskId, id));
-
-  for (const file of files) {
-    if (!file.type.startsWith('image/')) {
-      return c.json({ error: '只能上传图片' }, 400);
-    }
-
-    const fileName = `${uuid()}${getPhotoExtension(file)}`;
-    const bytes = Buffer.from(await file.arrayBuffer());
-    await saveTaskPhoto(id, fileName, bytes, file.type || 'image/jpeg');
-
-    await db.insert(taskPhotos).values({
-      id: `photo_${uuid().slice(0, 8)}`,
-      taskId: id,
-      fileName,
-      originalName: file.name || fileName,
-      mimeType: file.type || 'image/jpeg',
-      fileSize: file.size,
-    });
-  }
+  const photoCount = await countTaskPhotos(id);
 
   await db.update(deliveryTasks).set({
     actualWeight,
-    photoCount: files.length,
+    photoCount,
     status: '待送达',
     updatedAt: new Date().toISOString(),
   }).where(eq(deliveryTasks.id, id));
@@ -475,33 +537,15 @@ tasksRoutes.put('/:id/photo', async (c) => {
       return c.json({ error: '请先选择照片' }, 400);
     }
 
-    const existing = await db.select().from(taskPhotos).where(eq(taskPhotos.taskId, id));
-    for (const photo of existing) {
-      removeTaskPhoto(id, photo.fileName);
+    try {
+      await replaceTaskStagePhotos(id, PHOTO_STAGE_WEIGH, files);
+    } catch (error: any) {
+      return c.json({ error: error.message || '照片上传失败' }, 400);
     }
-    await db.delete(taskPhotos).where(eq(taskPhotos.taskId, id));
-
-    for (const file of files) {
-      if (!file.type.startsWith('image/')) {
-        return c.json({ error: '只能上传图片' }, 400);
-      }
-
-      const fileName = `${uuid()}${getPhotoExtension(file)}`;
-      const bytes = Buffer.from(await file.arrayBuffer());
-      await saveTaskPhoto(id, fileName, bytes, file.type || 'image/jpeg');
-
-      await db.insert(taskPhotos).values({
-        id: `photo_${uuid().slice(0, 8)}`,
-        taskId: id,
-        fileName,
-        originalName: file.name || fileName,
-        mimeType: file.type || 'image/jpeg',
-        fileSize: file.size,
-      });
-    }
+    const photoCount = await countTaskPhotos(id);
 
     await db.update(deliveryTasks).set({
-      photoCount: files.length,
+      photoCount,
       updatedAt: new Date().toISOString(),
     }).where(eq(deliveryTasks.id, id));
 
@@ -543,36 +587,18 @@ tasksRoutes.put('/:id/complete', async (c) => {
   }
 
   if (files.length > 0) {
-    const existing = await db.select().from(taskPhotos).where(eq(taskPhotos.taskId, id));
-    for (const photo of existing) {
-      await removeTaskPhoto(id, photo.fileName);
-    }
-    await db.delete(taskPhotos).where(eq(taskPhotos.taskId, id));
-
-    for (const file of files) {
-      if (!file.type.startsWith('image/')) {
-        return c.json({ error: '只能上传图片' }, 400);
-      }
-
-      const fileName = `${uuid()}${getPhotoExtension(file)}`;
-      const bytes = Buffer.from(await file.arrayBuffer());
-      await saveTaskPhoto(id, fileName, bytes, file.type || 'image/jpeg');
-
-      await db.insert(taskPhotos).values({
-        id: `photo_${uuid().slice(0, 8)}`,
-        taskId: id,
-        fileName,
-        originalName: file.name || fileName,
-        mimeType: file.type || 'image/jpeg',
-        fileSize: file.size,
-      });
+    try {
+      await insertTaskPhotos(id, PHOTO_STAGE_DELIVERY, files);
+    } catch (error: any) {
+      return c.json({ error: error.message || '照片上传失败' }, 400);
     }
   }
+  const photoCount = await countTaskPhotos(id);
 
   await db.update(deliveryTasks).set({
     signMethod,
     note,
-    photoCount: files.length > 0 ? files.length : undefined,
+    photoCount,
     status: '已完成',
     completedAt: now,
     updatedAt: new Date().toISOString(),

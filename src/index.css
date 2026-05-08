@@ -1029,10 +1029,20 @@ button {
 .mobile-photo-card {
   position: relative;
   overflow: hidden;
+  padding: 0;
   border-radius: 18px;
   border: 1px solid var(--surface-border);
   background: var(--surface-strong);
   box-shadow: var(--shadow-md);
+}
+
+.mobile-photo-card--button {
+  width: 100%;
+  text-align: left;
+}
+
+.mobile-photo-card--button:active {
+  transform: scale(0.98);
 }
 
 .mobile-photo-card__image {
@@ -1052,6 +1062,18 @@ button {
   background: rgba(23, 54, 45, 0.84);
   color: #fff;
   font-size: 12px;
+}
+
+.mobile-photo-card__stage {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(23, 54, 45, 0.84);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .mobile-entry-switch {
@@ -1158,6 +1180,87 @@ button {
   background: rgba(255, 255, 255, 0.78);
 }
 
+.mobile-entry-line__selectors {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.mobile-entry-line__measure {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 86px 62px;
+  gap: 8px;
+  align-items: center;
+}
+
+.mobile-entry-line__measure .ant-select {
+  width: 100%;
+}
+
+.mobile-stepper {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 38px;
+  align-items: center;
+  overflow: hidden;
+  min-height: 42px;
+  border: 1px solid rgba(31, 42, 35, 0.14);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.mobile-stepper button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 42px;
+  border: 0;
+  background: #eef4f0;
+  color: var(--brand-deep);
+}
+
+.mobile-stepper .ant-input-number {
+  width: 100%;
+  border: 0;
+  box-shadow: none;
+}
+
+.mobile-stepper .ant-input-number-input {
+  height: 42px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.mobile-stepper--weight {
+  width: min(172px, 48vw);
+}
+
+.mobile-auto-total {
+  padding: 12px 14px;
+  border: 1px solid rgba(31, 42, 35, 0.1);
+  border-radius: 14px;
+  background: #eef4f0;
+  color: var(--brand-deep);
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.mobile-entry-line__total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 2px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.mobile-entry-line__total strong {
+  color: var(--brand-deep);
+  font-size: 14px;
+}
+
 .mobile-entry-line__foot {
   display: flex;
   align-items: center;
@@ -1170,10 +1273,39 @@ button {
   width: 100%;
 }
 
+.mobile-inline-action--danger {
+  background: #fff1ee;
+  color: #a14f41;
+}
+
 .mobile-ghost-button.ant-btn {
   border-color: rgba(31, 42, 35, 0.12);
   background: rgba(255, 255, 255, 0.72);
   color: var(--text-main);
+}
+
+.mobile-date-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid rgba(31, 42, 35, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--text-main);
+  font-size: 14px;
+  text-align: left;
+}
+
+.mobile-date-trigger span:first-child {
+  font-weight: 700;
+}
+
+.mobile-date-trigger span:last-child {
+  color: var(--text-soft);
+  font-size: 12px;
 }
 
 .mobile-sheet .ant-drawer-content {
@@ -1430,6 +1562,14 @@ button {
   box-shadow: var(--shadow-md);
 }
 
+.mobile-record-card--button {
+  cursor: pointer;
+}
+
+.mobile-record-card--button:active {
+  transform: scale(0.99);
+}
+
 .mobile-record-card__head {
   display: flex;
   align-items: flex-start;
@@ -1457,6 +1597,18 @@ button {
 .mobile-record-card__stat {
   min-width: 58px;
   text-align: right;
+}
+
+.mobile-record-card__open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: #eef4f0;
+  color: var(--brand-deep);
+  flex: 0 0 auto;
 }
 
 .mobile-record-card__stat span {

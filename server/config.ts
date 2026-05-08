@@ -40,7 +40,7 @@ export function getAdminBootstrapConfig(): AdminBootstrapConfig | null {
 export function getDeepSeekConfig() {
   const apiKey = process.env.DEEPSEEK_API_KEY || process.env.API_Key || '';
   const baseUrl = process.env.DEEPSEEK_BASE_URL || process.env['Base_URL(OpenAI)'] || '';
-  const model = process.env.DEEPSEEK_MODEL || process.env.model || '';
+  const model = process.env.DEEPSEEK_MODEL || process.env.Model || process.env.model || '';
 
   return {
     apiKey,
