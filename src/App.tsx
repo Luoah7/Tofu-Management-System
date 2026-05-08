@@ -20,6 +20,13 @@ import MobileMerchants from '@/pages/mobile/Merchants';
 import MobileProducts from '@/pages/mobile/Products';
 import MerchantBill from '@/pages/bill/MerchantBill';
 
+function getAuthedHomePath() {
+  const ua = navigator.userAgent.toLowerCase();
+  const isMobile = /android|iphone|ipad|ipod|mobile|micromessenger/.test(ua)
+    || window.matchMedia('(max-width: 900px)').matches;
+  return isMobile ? '/mobile' : '/admin';
+}
+
 class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: string }> {
   state = { error: '' };
   static getDerivedStateFromError(err: Error) {
@@ -41,6 +48,7 @@ class ErrorBoundary extends Component<{ children: React.ReactNode }, { error: st
 function AppContent() {
   const { user, loading, login, logout } = useAuth();
   const navigate = useNavigate();
+  const authedHomePath = getAuthedHomePath();
 
   if (loading) {
     return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spin size="large" /></div>;
@@ -49,7 +57,7 @@ function AppContent() {
   return (
     <Routes>
       <Route path="/bill/:merchantId" element={<MerchantBill />} />
-      <Route path="/login" element={user ? <Navigate to="/admin" replace /> : <Login onLogin={login} />} />
+      <Route path="/login" element={user ? <Navigate to={authedHomePath} replace /> : <Login onLogin={login} />} />
       <Route path="/admin/*" element={
         user ? (
           <AdminLayout user={user} onLogout={() => { logout(); navigate('/login'); }}>
@@ -79,8 +87,8 @@ function AppContent() {
           </MobileLayout>
         ) : <Navigate to="/login" replace />
       } />
-      <Route path="/" element={<Navigate to={user ? '/admin' : '/login'} replace />} />
-      <Route path="*" element={<Navigate to={user ? '/admin' : '/login'} replace />} />
+      <Route path="/" element={<Navigate to={user ? authedHomePath : '/login'} replace />} />
+      <Route path="*" element={<Navigate to={user ? authedHomePath : '/login'} replace />} />
     </Routes>
   );
 }

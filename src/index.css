@@ -857,6 +857,51 @@ button {
   box-shadow: 0 16px 24px rgba(29, 68, 56, 0.18);
 }
 
+.mobile-hidden-input {
+  display: none;
+}
+
+.mobile-photo-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mobile-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.mobile-photo-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-md);
+}
+
+.mobile-photo-card__image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+}
+
+.mobile-photo-card__remove {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(23, 54, 45, 0.84);
+  color: #fff;
+  font-size: 12px;
+}
+
 .mobile-ghost-button.ant-btn {
   border-color: rgba(31, 42, 35, 0.12);
   background: rgba(255, 255, 255, 0.72);

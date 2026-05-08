@@ -6,6 +6,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import path from 'path';
 import fs from 'fs';
 import { initDatabase } from './db.js';
+import { getTaskPhotoPath } from './uploads.js';
 import authRoutes from './routes/auth.js';
 import merchantsRoutes from './routes/merchants.js';
 import productsRoutes from './routes/products.js';
@@ -155,4 +156,27 @@ serve({
   port: PORT,
 }, (info) => {
   console.log(`Server running at http://localhost:${info.port}`);
+});
+app.get('/uploads/tasks/:taskId/:fileName', async (c) => {
+  const taskId = c.req.param('taskId');
+  const fileName = c.req.param('fileName');
+  const photoPath = getTaskPhotoPath(taskId, fileName);
+
+  if (!fs.existsSync(photoPath)) {
+    return c.notFound();
+  }
+
+  const ext = path.extname(fileName).toLowerCase();
+  const contentType = ext === '.png'
+    ? 'image/png'
+    : ext === '.webp'
+      ? 'image/webp'
+      : ext === '.heic'
+        ? 'image/heic'
+        : 'image/jpeg';
+
+  return c.body(fs.readFileSync(photoPath), 200, {
+    'Content-Type': contentType,
+    'Cache-Control': 'public, max-age=31536000, immutable',
+  });
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Input, InputNumber, Modal, Spin, message } from 'antd';
 import {
   AlertTriangle,
@@ -24,6 +24,12 @@ type TaskItem = {
   actualWeight: number;
 };
 
+type TaskPhoto = {
+  id: string;
+  url: string;
+  originalName: string;
+};
+
 type Task = {
   id: string;
   merchantName: string;
@@ -45,6 +51,7 @@ type Task = {
   completedAt: string;
   routeEta: string;
   items: TaskItem[];
+  photos?: TaskPhoto[];
 };
 
 export default function TaskDetail() {
@@ -54,12 +61,14 @@ export default function TaskDetail() {
   const [loading, setLoading] = useState(true);
   const [weighValues, setWeighValues] = useState<Record<string, number>>({});
   const [totalWeigh, setTotalWeigh] = useState<number>(0);
-  const [photoCount, setPhotoCount] = useState(0);
+  const [selectedPhotos, setSelectedPhotos] = useState<File[]>([]);
   const [sentBasket, setSentBasket] = useState(0);
   const [returnedBasket, setReturnedBasket] = useState(0);
   const [exceptionModal, setExceptionModal] = useState(false);
   const [exceptionReason, setExceptionReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const albumInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
   const load = () => {
     if (!id) return;
@@ -75,7 +84,7 @@ export default function TaskDetail() {
 
         setWeighValues(nextWeighValues);
         setTotalWeigh(currentTask.actualWeight > 0 ? currentTask.actualWeight : currentTask.plannedWeight);
-        setPhotoCount(currentTask.photoCount);
+        setSelectedPhotos([]);
         setSentBasket(currentTask.sentBasketCount);
         setReturnedBasket(currentTask.returnedBasketCount);
       })
@@ -85,6 +94,18 @@ export default function TaskDetail() {
   useEffect(() => {
     load();
   }, [id]);
+
+  const photoPreviews = useMemo(
+    () => selectedPhotos.map(file => ({
+      name: file.name,
+      url: URL.createObjectURL(file),
+    })),
+    [selectedPhotos],
+  );
+
+  useEffect(() => () => {
+    photoPreviews.forEach(photo => URL.revokeObjectURL(photo.url));
+  }, [photoPreviews]);
 
   const handleWeigh = async () => {
     if (!task) return;
@@ -106,16 +127,33 @@ export default function TaskDetail() {
 
   const handlePhoto = async () => {
     if (!task) return;
+    if (selectedPhotos.length === 0) {
+      message.warning('请先选择照片');
+      return;
+    }
+
     setActionLoading(true);
     try {
-      await api.put(`/tasks/${task.id}/photo`, { photoCount });
-      message.success('拍照记录已保存');
+      const formData = new FormData();
+      selectedPhotos.forEach(photo => formData.append('photos', photo));
+      await api.putForm(`/tasks/${task.id}/photo`, formData);
+      message.success('照片已上传');
       load();
     } catch (err: any) {
       message.error(err.message);
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const appendPhotos = (files: FileList | null) => {
+    if (!files?.length) return;
+    const nextPhotos = Array.from(files).filter(file => file.type.startsWith('image/'));
+    setSelectedPhotos(prev => [...prev, ...nextPhotos]);
+  };
+
+  const removePhoto = (index: number) => {
+    setSelectedPhotos(prev => prev.filter((_, currentIndex) => currentIndex !== index));
   };
 
   const handleComplete = async () => {
@@ -283,17 +321,57 @@ export default function TaskDetail() {
           </div>
 
           <div className="mobile-surface mobile-surface--padded" style={{ marginTop: 14 }}>
+            <div className="mobile-photo-actions">
+              <input
+                ref={albumInputRef}
+                className="mobile-hidden-input"
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(event) => {
+                  appendPhotos(event.target.files);
+                  event.target.value = '';
+                }}
+              />
+              <input
+                ref={cameraInputRef}
+                className="mobile-hidden-input"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(event) => {
+                  appendPhotos(event.target.files);
+                  event.target.value = '';
+                }}
+              />
+              <Button block className="mobile-ghost-button" onClick={() => albumInputRef.current?.click()}>
+                选相册
+              </Button>
+              <Button block className="mobile-ghost-button" onClick={() => cameraInputRef.current?.click()}>
+                打开相机
+              </Button>
+            </div>
+
             <div className="mobile-field-card">
               <div className="mobile-field-card__label">照片</div>
-              <div className="mobile-number-input mobile-number-input--wide">
-                <InputNumber
-                  min={0}
-                  value={photoCount}
-                  onChange={value => setPhotoCount(Number(value || 0))}
-                  addonAfter="张"
-                />
+              <div className="mobile-panel-note">
+                <span>待上传 {selectedPhotos.length} 张</span>
+                <span>已存档 {task.photos?.length || 0} 张</span>
               </div>
             </div>
+
+            {photoPreviews.length > 0 ? (
+              <div className="mobile-photo-grid">
+                {photoPreviews.map((photo, index) => (
+                  <div key={`${photo.name}_${index}`} className="mobile-photo-card">
+                    <img src={photo.url} alt={photo.name} className="mobile-photo-card__image" />
+                    <button type="button" className="mobile-photo-card__remove" onClick={() => removePhoto(index)}>
+                      删除
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <Button
               type="primary"
               block
@@ -493,6 +571,19 @@ export default function TaskDetail() {
           />
         </div>
       </Modal>
+
+      {task.photos?.length ? (
+        <>
+          <SectionHeading title="照片" extra={`${task.photos.length} 张`} />
+          <div className="mobile-photo-grid mobile-rise" style={{ animationDelay: '280ms' }}>
+            {task.photos.map(photo => (
+              <a key={photo.id} href={photo.url} target="_blank" rel="noreferrer" className="mobile-photo-card">
+                <img src={photo.url} alt={photo.originalName} className="mobile-photo-card__image" />
+              </a>
+            ))}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

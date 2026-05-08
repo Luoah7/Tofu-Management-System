@@ -80,6 +80,16 @@ export const taskItems = sqliteTable('task_items', {
   actualWeight: real('actual_weight').notNull().default(0),
 });
 
+export const taskPhotos = sqliteTable('task_photos', {
+  id: text('id').primaryKey(),
+  taskId: text('task_id').notNull().references(() => deliveryTasks.id, { onDelete: 'cascade' }),
+  fileName: text('file_name').notNull(),
+  originalName: text('original_name').notNull().default(''),
+  mimeType: text('mime_type').notNull().default('image/jpeg'),
+  fileSize: integer('file_size').notNull().default(0),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now','localtime'))`),
+});
+
 export const settlements = sqliteTable('settlements', {
   id: text('id').primaryKey(),
   merchantId: text('merchant_id').notNull().references(() => merchants.id),
@@ -182,6 +192,16 @@ export function initDatabase() {
       planned_weight REAL NOT NULL DEFAULT 0, actual_weight REAL NOT NULL DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_task_items_task ON task_items(task_id);
+    CREATE TABLE IF NOT EXISTS task_photos (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL REFERENCES delivery_tasks(id) ON DELETE CASCADE,
+      file_name TEXT NOT NULL,
+      original_name TEXT NOT NULL DEFAULT '',
+      mime_type TEXT NOT NULL DEFAULT 'image/jpeg',
+      file_size INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_task_photos_task ON task_photos(task_id);
     CREATE TABLE IF NOT EXISTS settlements (
       id TEXT PRIMARY KEY, merchant_id TEXT NOT NULL REFERENCES merchants(id),
       merchant_name TEXT NOT NULL, period_start TEXT NOT NULL, period_end TEXT NOT NULL,

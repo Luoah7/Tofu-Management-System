@@ -1,12 +1,32 @@
 import { Hono } from 'hono';
 import { eq, and, sql } from 'drizzle-orm';
-import { db, deliveryTasks, taskItems, merchants, products as productsTable, productSpecs } from '../db.js';
+import fs from 'fs';
+import path from 'path';
+import { db, deliveryTasks, taskItems, taskPhotos, merchants, products as productsTable, productSpecs } from '../db.js';
 import { authMiddleware } from '../auth.js';
 import { parseWeChatText, matchProduct } from '../utils/wechat-parser.js';
 import { v4 as uuid } from 'uuid';
+import { getTaskPhotoPath, getTaskPhotoUrl, removeTaskPhoto } from '../uploads.js';
 
 const tasksRoutes = new Hono();
 tasksRoutes.use('*', authMiddleware);
+
+function getPhotoExtension(file: File) {
+  const ext = path.extname(file.name || '').toLowerCase();
+  if (ext) return ext;
+  if (file.type === 'image/png') return '.png';
+  if (file.type === 'image/webp') return '.webp';
+  if (file.type === 'image/heic') return '.heic';
+  return '.jpg';
+}
+
+async function listTaskPhotos(taskId: string) {
+  const photos = await db.select().from(taskPhotos).where(eq(taskPhotos.taskId, taskId)).orderBy(taskPhotos.createdAt);
+  return photos.map(photo => ({
+    ...photo,
+    url: getTaskPhotoUrl(taskId, photo.fileName),
+  }));
+}
 
 // 列表
 tasksRoutes.get('/', async (c) => {
@@ -54,7 +74,8 @@ tasksRoutes.get('/:id', async (c) => {
   if (!task) return c.json({ error: '任务不存在' }, 404);
 
   const items = await db.select().from(taskItems).where(eq(taskItems.taskId, id));
-  return c.json({ ...task, items });
+  const photos = await listTaskPhotos(id);
+  return c.json({ ...task, items, photos });
 });
 
 // 新建任务
@@ -197,7 +218,8 @@ tasksRoutes.put('/:id', async (c) => {
 
   const [updated] = await db.select().from(deliveryTasks).where(eq(deliveryTasks.id, id));
   const items = await db.select().from(taskItems).where(eq(taskItems.taskId, id));
-  return c.json({ ...updated, items });
+  const photos = await listTaskPhotos(id);
+  return c.json({ ...updated, items, photos });
 });
 
 // 复秤
@@ -219,12 +241,59 @@ tasksRoutes.put('/:id/weigh', async (c) => {
 
   const [updated] = await db.select().from(deliveryTasks).where(eq(deliveryTasks.id, id));
   const items = await db.select().from(taskItems).where(eq(taskItems.taskId, id));
-  return c.json({ ...updated, items });
+  const photos = await listTaskPhotos(id);
+  return c.json({ ...updated, items, photos });
 });
 
 // 拍照
 tasksRoutes.put('/:id/photo', async (c) => {
   const id = c.req.param('id');
+  const contentType = c.req.header('content-type') || '';
+
+  if (contentType.includes('multipart/form-data')) {
+    const form = await c.req.formData();
+    const files = form.getAll('photos').filter((file): file is File => file instanceof File && file.size > 0);
+
+    if (files.length === 0) {
+      return c.json({ error: '请先选择照片' }, 400);
+    }
+
+    const existing = await db.select().from(taskPhotos).where(eq(taskPhotos.taskId, id));
+    for (const photo of existing) {
+      removeTaskPhoto(id, photo.fileName);
+    }
+    await db.delete(taskPhotos).where(eq(taskPhotos.taskId, id));
+
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) {
+        return c.json({ error: '只能上传图片' }, 400);
+      }
+
+      const fileName = `${uuid()}${getPhotoExtension(file)}`;
+      const bytes = Buffer.from(await file.arrayBuffer());
+      fs.writeFileSync(getTaskPhotoPath(id, fileName), bytes);
+
+      await db.insert(taskPhotos).values({
+        id: `photo_${uuid().slice(0, 8)}`,
+        taskId: id,
+        fileName,
+        originalName: file.name || fileName,
+        mimeType: file.type || 'image/jpeg',
+        fileSize: file.size,
+      });
+    }
+
+    await db.update(deliveryTasks).set({
+      photoCount: files.length,
+      status: '待送达',
+      updatedAt: new Date().toISOString(),
+    }).where(eq(deliveryTasks.id, id));
+
+    const [updated] = await db.select().from(deliveryTasks).where(eq(deliveryTasks.id, id));
+    const photos = await listTaskPhotos(id);
+    return c.json({ ...updated, photos });
+  }
+
   const body = await c.req.json<{ photoCount: number }>();
 
   await db.update(deliveryTasks).set({
@@ -234,7 +303,8 @@ tasksRoutes.put('/:id/photo', async (c) => {
   }).where(eq(deliveryTasks.id, id));
 
   const [updated] = await db.select().from(deliveryTasks).where(eq(deliveryTasks.id, id));
-  return c.json(updated);
+  const photos = await listTaskPhotos(id);
+  return c.json({ ...updated, photos });
 });
 
 // 完成
@@ -254,7 +324,8 @@ tasksRoutes.put('/:id/complete', async (c) => {
 
   const [updated] = await db.select().from(deliveryTasks).where(eq(deliveryTasks.id, id));
   const items = await db.select().from(taskItems).where(eq(taskItems.taskId, id));
-  return c.json({ ...updated, items });
+  const photos = await listTaskPhotos(id);
+  return c.json({ ...updated, items, photos });
 });
 
 // 异常
