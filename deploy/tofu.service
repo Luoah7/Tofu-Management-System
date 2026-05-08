@@ -1,0 +1,15 @@
+[Unit]
+Description=Doufu Application
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/srv/tofu/current
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm run start
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
