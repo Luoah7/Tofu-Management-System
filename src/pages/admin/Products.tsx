@@ -164,10 +164,10 @@ export default function Products() {
       >
         <Form form={productForm} layout="vertical">
           <Form.Item name="name" label="商品名称" rules={[{ required: true, message: '请输入商品名称' }]}>
-            <Input placeholder="如：豆腐、黑豆腐" />
+            <Input />
           </Form.Item>
           <Form.Item name="category" label="分类" initialValue="">
-            <Input placeholder="如：豆腐类、豆干类" />
+            <Input />
           </Form.Item>
         </Form>
       </Modal>
@@ -181,7 +181,7 @@ export default function Products() {
       >
         <Form form={specForm} layout="vertical">
           <Form.Item name="label" label="规格名称" rules={[{ required: true, message: '请输入规格名称' }]}>
-            <Input placeholder="如：常规价 ¥2/斤" />
+            <Input />
           </Form.Item>
           <Form.Item name="unitPrice" label="单价（元/斤）" rules={[{ required: true, message: '请输入单价' }]}>
             <InputNumber style={{ width: '100%' }} min={0} step={0.5} precision={2} />

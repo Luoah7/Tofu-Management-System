@@ -137,13 +137,9 @@ export default function MobileProducts() {
         <button type="button" className="mobile-back-button" onClick={() => navigate('/mobile/manage')}>
           <ChevronLeft size={18} />
         </button>
-        <div className="mobile-hero__eyebrow" style={{ marginTop: 14 }}>移动端管理</div>
         <div className="mobile-hero__title">商品管理</div>
         <div className="mobile-hero__meta">
           <span>共 {products.length} 个商品</span>
-        </div>
-        <div className="mobile-inline-chips">
-          <span className="mobile-chip mobile-chip--light">商品和规格都能直接改</span>
         </div>
       </section>
 
@@ -158,14 +154,14 @@ export default function MobileProducts() {
         </Button>
       </div>
 
-      <SectionHeading eyebrow="商品列表" title="商品与规格" extra={`${products.length} 个`} />
+      <SectionHeading title="商品" extra={`${products.length} 个`} />
 
       {loading ? (
         <div className="mobile-loading">
           <Spin size="large" />
         </div>
       ) : products.length === 0 ? (
-        <EmptyState title="还没有商品" description="先建商品，后面录入任务时才有可选品项。" />
+        <EmptyState title="还没有商品" />
       ) : (
         <div className="mobile-record-stack">
           {products.map((product, index) => (
@@ -241,10 +237,10 @@ export default function MobileProducts() {
       >
         <Form form={productForm} layout="vertical">
           <Form.Item name="name" label="商品名称" rules={[{ required: true, message: '请输入商品名称' }]}>
-            <Input placeholder="如 豆腐 黑豆腐" />
+            <Input />
           </Form.Item>
           <Form.Item name="category" label="分类">
-            <Input placeholder="如 豆腐类 豆干类" />
+            <Input />
           </Form.Item>
         </Form>
       </Modal>
@@ -264,7 +260,7 @@ export default function MobileProducts() {
       >
         <Form form={specForm} layout="vertical">
           <Form.Item name="label" label="规格名称" rules={[{ required: true, message: '请输入规格名称' }]}>
-            <Input placeholder="如 常规价 ¥2/斤" />
+            <Input />
           </Form.Item>
           <Form.Item name="unitPrice" label="单价" rules={[{ required: true, message: '请输入单价' }]}>
             <InputNumber style={{ width: '100%' }} min={0} step={0.5} precision={2} />

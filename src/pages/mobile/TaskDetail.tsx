@@ -47,8 +47,6 @@ type Task = {
   items: TaskItem[];
 };
 
-const NORMAL_FLOW = ['待配货', '待复秤', '待拍照', '待送达', '已完成'];
-
 export default function TaskDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -61,7 +59,6 @@ export default function TaskDetail() {
   const [returnedBasket, setReturnedBasket] = useState(0);
   const [exceptionModal, setExceptionModal] = useState(false);
   const [exceptionReason, setExceptionReason] = useState('');
-  const [exceptionNote, setExceptionNote] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
   const load = () => {
@@ -145,7 +142,7 @@ export default function TaskDetail() {
     if (!task || !exceptionReason) return;
     setActionLoading(true);
     try {
-      await api.put(`/tasks/${task.id}/exception`, { exceptionReason, exceptionNote });
+      await api.put(`/tasks/${task.id}/exception`, { exceptionReason, exceptionNote: '' });
       message.success('异常已记录');
       setExceptionModal(false);
       load();
@@ -172,9 +169,6 @@ export default function TaskDetail() {
     );
   }
 
-  const currentStep = task.status === '异常'
-    ? 3
-    : Math.max(0, NORMAL_FLOW.indexOf(task.status));
   const totalDelta = totalWeigh - task.plannedWeight;
   const deltaText = totalDelta === 0
     ? '与应配一致'
@@ -201,17 +195,13 @@ export default function TaskDetail() {
         <div className="mobile-inline-chips">
           <StatusBadge status={task.status} />
           <span className="mobile-chip mobile-chip--dark">{task.merchantType || '商户'}</span>
-          <span className="mobile-chip mobile-chip--dark">预计 {task.routeEta || '待安排'}</span>
+          {task.routeEta ? <span className="mobile-chip mobile-chip--dark">{task.routeEta}</span> : null}
           {task.phone ? (
             <span className="mobile-chip mobile-chip--dark">
               <Phone size={14} />
               <span>{task.phone}</span>
             </span>
           ) : null}
-        </div>
-        <div className="mobile-detail-progress">
-          当前流程走到第 {currentStep + 1} 步
-          <span>{task.status}</span>
         </div>
       </section>
 
@@ -222,9 +212,7 @@ export default function TaskDetail() {
               <Scale size={18} />
             </div>
             <div>
-              <div className="mobile-action-focus__eyebrow">现在要做</div>
               <div className="mobile-action-focus__title">复秤录入</div>
-              <div className="mobile-action-focus__desc">先改每个品项实秤，再确认总重量。</div>
             </div>
           </div>
 
@@ -290,15 +278,13 @@ export default function TaskDetail() {
               <Camera size={18} />
             </div>
             <div>
-              <div className="mobile-action-focus__eyebrow">现在要做</div>
-              <div className="mobile-action-focus__title">拍照记录</div>
-              <div className="mobile-action-focus__desc">先补现场照片数量，保存后就能继续下一步。</div>
+              <div className="mobile-action-focus__title">拍照</div>
             </div>
           </div>
 
           <div className="mobile-surface mobile-surface--padded" style={{ marginTop: 14 }}>
             <div className="mobile-field-card">
-              <div className="mobile-field-card__label">现场照片数量</div>
+              <div className="mobile-field-card__label">照片</div>
               <div className="mobile-number-input mobile-number-input--wide">
                 <InputNumber
                   min={0}
@@ -330,9 +316,7 @@ export default function TaskDetail() {
               <Truck size={18} />
             </div>
             <div>
-              <div className="mobile-action-focus__eyebrow">现在要做</div>
               <div className="mobile-action-focus__title">确认送达</div>
-              <div className="mobile-action-focus__desc">先补筐子交接，再确认签收。异常也在这里记。</div>
             </div>
           </div>
 
@@ -361,7 +345,7 @@ export default function TaskDetail() {
             </div>
 
             <div className="mobile-panel-note">
-              <span>商户当前持有</span>
+              <span>持筐</span>
               <span>{task.beforeBasketCount} 个筐</span>
             </div>
 
@@ -412,8 +396,6 @@ export default function TaskDetail() {
           </div>
           <div className="mobile-note-card__content">
             原因 {task.exceptionReason || '-'}
-            <br />
-            备注 {task.exceptionNote || '-'}
           </div>
         </div>
       ) : null}
@@ -435,7 +417,7 @@ export default function TaskDetail() {
         </div>
       </div>
 
-      <SectionHeading eyebrow="配货明细" title="商品列表" extra={`${task.items.length} 项`} />
+      <SectionHeading title="商品" extra={`${task.items.length} 项`} />
 
       <div className="mobile-surface mobile-surface--padded mobile-rise" style={{ animationDelay: '240ms' }}>
         <div className="mobile-info-list">
@@ -459,7 +441,7 @@ export default function TaskDetail() {
 
       {(task.status === '待送达' || task.status === '待拍照') && !isDeliveryStage ? (
         <>
-          <SectionHeading eyebrow="补充信息" title="筐子管理" />
+          <SectionHeading title="筐子" />
 
           <div className="mobile-surface mobile-surface--padded mobile-rise" style={{ animationDelay: '320ms' }}>
             <div className="mobile-dual-grid">
@@ -486,7 +468,7 @@ export default function TaskDetail() {
             </div>
 
             <div className="mobile-panel-note">
-              <span>商户当前持有</span>
+              <span>持筐</span>
               <span>{task.beforeBasketCount} 个筐</span>
             </div>
           </div>
@@ -508,16 +490,6 @@ export default function TaskDetail() {
           <Input
             value={exceptionReason}
             onChange={event => setExceptionReason(event.target.value)}
-            placeholder="如 缺货 临时改量 商户拒收"
-          />
-        </div>
-        <div className="mobile-textarea">
-          <div className="mobile-field-card__label">备注</div>
-          <Input.TextArea
-            rows={4}
-            value={exceptionNote}
-            onChange={event => setExceptionNote(event.target.value)}
-            placeholder="补充说明"
           />
         </div>
       </Modal>

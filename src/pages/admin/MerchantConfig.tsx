@@ -136,7 +136,7 @@ export default function MerchantConfig() {
           </div>
           <div style={{ display: 'flex', gap: 16 }}>
             <Form.Item name="phone" label="电话" style={{ flex: 1 }}><Input /></Form.Item>
-            <Form.Item name="settlementDay" label="结算日" style={{ flex: 1 }}><Input placeholder="如：每月5日" /></Form.Item>
+            <Form.Item name="settlementDay" label="结算日" style={{ flex: 1 }}><Input /></Form.Item>
           </div>
           <Form.Item name="address" label="地址"><Input /></Form.Item>
           <div style={{ display: 'flex', gap: 16 }}>
@@ -147,7 +147,6 @@ export default function MerchantConfig() {
               <Input type="number" min={0} />
             </Form.Item>
           </div>
-          <Form.Item name="note" label="备注"><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>
 

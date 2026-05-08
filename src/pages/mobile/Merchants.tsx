@@ -153,14 +153,10 @@ export default function MobileMerchants() {
         <button type="button" className="mobile-back-button" onClick={() => navigate('/mobile/manage')}>
           <ChevronLeft size={18} />
         </button>
-        <div className="mobile-hero__eyebrow" style={{ marginTop: 14 }}>移动端管理</div>
         <div className="mobile-hero__title">商户管理</div>
         <div className="mobile-hero__meta">
           <span>共 {merchants.length} 家</span>
           <span>启用 {activeCount} 家</span>
-        </div>
-        <div className="mobile-inline-chips">
-          <span className="mobile-chip mobile-chip--light">新增 编辑 历史 都在这里</span>
         </div>
       </section>
 
@@ -175,14 +171,14 @@ export default function MobileMerchants() {
         </Button>
       </div>
 
-      <SectionHeading eyebrow="商户列表" title="常用商户" extra={`${merchants.length} 家`} />
+      <SectionHeading title="商户" extra={`${merchants.length} 家`} />
 
       {loading ? (
         <div className="mobile-loading">
           <Spin size="large" />
         </div>
       ) : merchants.length === 0 ? (
-        <EmptyState title="还没有商户" description="先建一个，后面配货和结算才有对象。" />
+        <EmptyState title="还没有商户" />
       ) : (
         <div className="mobile-record-stack">
           {merchants.map((merchant, index) => (
@@ -211,7 +207,7 @@ export default function MobileMerchants() {
               <div className="mobile-record-card__rows">
                 {merchant.contactName || merchant.phone ? (
                   <div className="mobile-record-card__row">
-                    <span>{merchant.contactName || '联系人未填'}</span>
+                    <span>{merchant.contactName || '-'}</span>
                     {merchant.phone ? (
                       <span className="mobile-record-card__dim">
                         <Phone size={14} />
@@ -221,12 +217,14 @@ export default function MobileMerchants() {
                   </div>
                 ) : null}
 
-                <div className="mobile-record-card__row">
-                  <span className="mobile-record-card__dim">
-                    <MapPin size={14} />
-                    {merchant.address || '地址未填'}
-                  </span>
-                </div>
+                {merchant.address ? (
+                  <div className="mobile-record-card__row">
+                    <span className="mobile-record-card__dim">
+                      <MapPin size={14} />
+                      {merchant.address}
+                    </span>
+                  </div>
+                ) : null}
 
                 <div className="mobile-record-card__row">
                   <span>结算日 {merchant.settlementDay || '-'}</span>
@@ -283,16 +281,13 @@ export default function MobileMerchants() {
             <Input />
           </Form.Item>
           <Form.Item name="settlementDay" label="结算日">
-            <Input placeholder="如 每月5日" />
+            <Input />
           </Form.Item>
           <Form.Item name="discountRate" label="折扣率">
             <InputNumber style={{ width: '100%' }} min={0} max={1} step={0.05} />
           </Form.Item>
           <Form.Item name="basketCount" label="当前持有筐数">
             <InputNumber style={{ width: '100%' }} min={0} />
-          </Form.Item>
-          <Form.Item name="note" label="备注">
-            <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
       </Modal>
@@ -312,7 +307,7 @@ export default function MobileMerchants() {
             <Spin size="large" />
           </div>
         ) : !historyMerchant?.deliveryHistory?.length ? (
-          <EmptyState title="还没有历史记录" description="这家商户目前还没有已完成的配货任务。" />
+          <EmptyState title="还没有历史记录" />
         ) : (
           <div className="mobile-record-stack">
             {historyMerchant.deliveryHistory.map(record => (

@@ -45,15 +45,15 @@ export default function Receipt() {
 
   return (
     <div style={{ padding: 24 }}>
-      <Card title="热敏打印机小票预览">
+      <Card title="小票">
         <Space style={{ marginBottom: 16 }}>
-          <span>选择任务：</span>
-          <Select style={{ width: 200 }} placeholder="请选择配货任务" value={selectedTaskId || undefined} onChange={setSelectedTaskId}>
+          <span>任务</span>
+          <Select style={{ width: 200 }} placeholder="选择任务" value={selectedTaskId || undefined} onChange={setSelectedTaskId}>
             {tasks.map(t => (
               <Select.Option key={t.id} value={t.id}>{t.merchantName} - {t.items.length}种商品</Select.Option>
             ))}
           </Select>
-          <span>纸张宽度：</span>
+          <span>宽度</span>
           <Select style={{ width: 100 }} value={paperWidth} onChange={setPaperWidth}>
             <Select.Option value={58}>58mm</Select.Option>
             <Select.Option value={80}>80mm</Select.Option>
@@ -62,7 +62,6 @@ export default function Receipt() {
 
         <div style={{ display: 'flex', gap: 24 }}>
           <div style={{ flex: 1 }}>
-            <h4 style={{ marginBottom: 12 }}>小票预览效果</h4>
             <div style={{ background: '#f0f0f0', padding: 20, borderRadius: 8, display: 'flex', justifyContent: 'center' }}>
               {receipt ? (
                 <div style={{
@@ -109,9 +108,6 @@ export default function Receipt() {
                   {divider('-')}
                   <div style={{ margin: '4px 0', fontSize: 9, color: '#666' }}>
                     <div>操作员：{receipt.operator}</div>
-                    <div style={{ textAlign: 'center', marginTop: 8 }}>
-                      <div>谢谢惠顾</div><div>欢迎再次光临</div>
-                    </div>
                   </div>
                   <div style={{ textAlign: 'center', marginTop: 8 }}>
                     <div style={{ fontSize: 8, letterSpacing: 2, fontFamily: 'monospace' }}>||||||||||||||||||||||||||||</div>
@@ -119,32 +115,8 @@ export default function Receipt() {
                   </div>
                 </div>
               ) : (
-                <div style={{ padding: 40, color: '#999', textAlign: 'center' }}>请选择一个配货任务查看小票预览</div>
+                <div style={{ padding: 40, color: '#999', textAlign: 'center' }}>选择任务</div>
               )}
-            </div>
-          </div>
-
-          <div style={{ width: 300 }}>
-            <h4 style={{ marginBottom: 12 }}>打印说明</h4>
-            <div style={{ background: '#f9f9f9', padding: 16, borderRadius: 8, fontSize: 12 }}>
-              <p><strong>纸张规格：</strong></p>
-              <ul style={{ paddingLeft: 20, margin: '8px 0' }}>
-                <li>58mm 热敏纸（常用）</li>
-                <li>80mm 热敏纸（宽幅）</li>
-              </ul>
-              <p><strong>打印设置：</strong></p>
-              <ul style={{ paddingLeft: 20, margin: '8px 0' }}>
-                <li>纸张类型：热敏纸</li>
-                <li>打印方向：纵向</li>
-                <li>边距：无</li>
-                <li>缩放：100%</li>
-              </ul>
-              <p><strong>适用场景：</strong></p>
-              <ul style={{ paddingLeft: 20, margin: '8px 0' }}>
-                <li>配货现场打印</li>
-                <li>商户签收凭证</li>
-                <li>临时收款收据</li>
-              </ul>
             </div>
           </div>
         </div>

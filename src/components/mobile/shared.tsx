@@ -74,7 +74,7 @@ export function SectionHeading({ eyebrow, title, extra }: SectionHeadingProps) {
 
 type EmptyStateProps = {
   title: string;
-  description: string;
+  description?: string;
   icon?: LucideIcon;
 };
 
@@ -85,7 +85,7 @@ export function EmptyState({ title, description, icon: Icon = CheckCircle2 }: Em
         <Icon size={24} />
       </div>
       <div className="mobile-empty__title">{title}</div>
-      <div className="mobile-empty__description">{description}</div>
+      {description ? <div className="mobile-empty__description">{description}</div> : null}
     </div>
   );
 }
@@ -127,17 +127,19 @@ export function TaskCard({ task, onClick, lead, delayMs = 0 }: TaskCardProps) {
       style={{ animationDelay: `${delayMs}ms` }}
     >
       <div className="task-card__topline">
-        <span className="task-card__lead">{lead || '待处理'}</span>
+        {lead ? <span className="task-card__lead">{lead}</span> : <span />}
         <StatusBadge status={task.status} />
       </div>
 
       <div className="task-card__head">
         <div>
           <div className="task-card__title">{task.merchantName}</div>
-          <div className="task-card__eta">
-            <Clock3 size={14} />
-            <span>{task.routeEta || '路线待安排'}</span>
-          </div>
+          {task.routeEta ? (
+            <div className="task-card__eta">
+              <Clock3 size={14} />
+              <span>{task.routeEta}</span>
+            </div>
+          ) : null}
         </div>
         <div className="task-card__arrow">
           <ChevronRight size={18} />

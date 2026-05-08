@@ -32,10 +32,10 @@ type Task = {
 };
 
 const SUMMARY_CARDS = [
-  { key: 'pendingWeigh', label: '待复秤', note: '先核重量', status: '待复秤' },
-  { key: 'pendingPhoto', label: '待拍照', note: '补现场图', status: '待拍照' },
-  { key: 'pendingDelivery', label: '待送达', note: '等签收', status: '待送达' },
-  { key: 'completed', label: '已完成', note: '今天已收口', status: '已完成' },
+  { key: 'pendingWeigh', label: '待复秤', status: '待复秤' },
+  { key: 'pendingPhoto', label: '待拍照', status: '待拍照' },
+  { key: 'pendingDelivery', label: '待送达', status: '待送达' },
+  { key: 'completed', label: '已完成', status: '已完成' },
 ] as const;
 
 export default function MobileHome() {
@@ -102,7 +102,6 @@ export default function MobileHome() {
         <div className="mobile-inline-chips">
           <span className="mobile-chip mobile-chip--light">进行中 {pendingTasks.length} 单</span>
           <span className="mobile-chip mobile-chip--dark">异常 {currentStats.exception} 单</span>
-          <span className="mobile-chip mobile-chip--dark">下一站 {pendingTasks[0]?.routeEta || '待安排'}</span>
         </div>
       </section>
 
@@ -141,7 +140,6 @@ export default function MobileHome() {
               </div>
               <div className="mobile-stat-card__value">{value}</div>
               <div className="mobile-stat-card__label">{item.label}</div>
-              <div className="mobile-stat-card__note">{item.note}</div>
             </div>
           );
         })}
@@ -151,29 +149,23 @@ export default function MobileHome() {
         <div className="mobile-alert mobile-rise" style={{ animationDelay: '260ms' }}>
           <AlertTriangle size={18} />
           <div>
-            <strong>有异常任务要盯一下</strong>
-            <span>当前有 {currentStats.exception} 单需要补记录或人工处理。</span>
+            <strong>异常 {currentStats.exception} 单</strong>
           </div>
         </div>
       ) : null}
 
       <SectionHeading
-        eyebrow="今日待办"
         title="配送清单"
         extra={`${pendingTasks.length} 单未完成`}
       />
 
       {pendingTasks.length === 0 ? (
-        <EmptyState
-          title="今天已经收口"
-          description="待处理任务已经清空，剩下的时间可以去看管理页或准备明天的配货。"
-        />
+        <EmptyState title="没有待处理任务" />
       ) : (
         pendingTasks.map((task, index) => (
           <TaskCard
             key={task.id}
             task={task}
-            lead={index === 0 ? '下一站' : '进行中'}
             delayMs={320 + index * 70}
             onClick={() => navigate(`/mobile/tasks/${task.id}`)}
           />

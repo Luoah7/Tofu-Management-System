@@ -57,14 +57,10 @@ export default function MobileTasks() {
         </div>
 
         <div className="mobile-hero__eyebrow">任务总览</div>
-        <div className="mobile-hero__title">今天的配送节奏</div>
+        <div className="mobile-hero__title">今日任务</div>
         <div className="mobile-hero__meta">
           <span>待处理 {pendingCount} 单</span>
           <span>已归档 {archivedCount} 单</span>
-        </div>
-        <div className="mobile-inline-chips">
-          <span className="mobile-chip mobile-chip--light">直接点卡片进详情</span>
-          <span className="mobile-chip mobile-chip--dark">按状态切换更顺手</span>
         </div>
       </section>
 
@@ -82,22 +78,17 @@ export default function MobileTasks() {
       </div>
 
       <SectionHeading
-        eyebrow="筛选结果"
         title={activeTab === 'pending' ? '待处理任务' : activeTab === 'completed' ? '已完成与异常' : '全部任务'}
         extra={`${filtered.length} 单`}
       />
 
       {filtered.length === 0 ? (
-        <EmptyState
-          title="这一栏现在空着"
-          description="当前筛选条件下没有任务，换个状态看看就行。"
-        />
+        <EmptyState title="没有任务" />
       ) : (
         filtered.map((task, index) => (
           <TaskCard
             key={task.id}
             task={task}
-            lead={activeTab === 'completed' ? '已归档' : '今日任务'}
             delayMs={150 + index * 60}
             onClick={() => navigate(`/mobile/tasks/${task.id}`)}
           />

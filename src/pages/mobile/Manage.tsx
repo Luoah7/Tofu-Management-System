@@ -11,13 +11,11 @@ type Props = {
 const SHORTCUTS = [
   {
     title: '商户管理',
-    desc: '看资料、看历史、调状态',
     icon: Store,
     path: '/mobile/manage/merchants',
   },
   {
     title: '商品管理',
-    desc: '改品项、改规格、控上架',
     icon: Package2,
     path: '/mobile/manage/products',
   },
@@ -29,18 +27,10 @@ export default function MobileManage({ user, onLogout }: Props) {
   return (
     <div className="mobile-page">
       <section className="mobile-hero mobile-rise">
-        <div className="mobile-hero__eyebrow">账号与配置</div>
         <div className="mobile-hero__title">{user?.displayName || '配货员'}</div>
-        <div className="mobile-hero__meta">
-          <span>当前入口是移动端工作台</span>
-        </div>
-        <div className="mobile-inline-chips">
-          <span className="mobile-chip mobile-chip--light">商户和商品都改成移动页</span>
-          <span className="mobile-chip mobile-chip--dark">常用操作直接在这里做</span>
-        </div>
       </section>
 
-      <SectionHeading eyebrow="常用入口" title="管理捷径" />
+      <SectionHeading title="管理" />
 
       <div className="mobile-shortcut-grid">
         {SHORTCUTS.map((item, index) => {
@@ -58,13 +48,12 @@ export default function MobileManage({ user, onLogout }: Props) {
                 <Icon size={20} />
               </div>
               <div className="mobile-shortcut-card__title">{item.title}</div>
-              <div className="mobile-shortcut-card__desc">{item.desc}</div>
             </button>
           );
         })}
       </div>
 
-      <SectionHeading eyebrow="账号动作" title="个人设置" />
+      <SectionHeading title="账号" />
 
       <div className="mobile-surface mobile-menu-card mobile-rise" style={{ animationDelay: '220ms' }}>
         <button type="button" className="mobile-menu-row" onClick={onLogout}>
@@ -74,7 +63,6 @@ export default function MobileManage({ user, onLogout }: Props) {
             </div>
             <div>
               <div className="mobile-menu-row__title">退出登录</div>
-              <div className="mobile-menu-row__desc">清掉当前账号，回到登录页</div>
             </div>
           </div>
           <ChevronRight size={18} color="#637166" />

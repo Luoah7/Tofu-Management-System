@@ -26,12 +26,7 @@ export default function Login({ onLogin }: Props) {
     <div className="auth-screen">
       <div className="auth-shell">
         <div className="auth-card">
-          <div className="auth-badge">订货 配货 结算</div>
           <h1 className="auth-title">{businessProfile.name}</h1>
-          <p className="auth-subtitle">
-            登录后直接进工作台。
-            手机上看更像原生 App，后台页也会保持现在的业务流程。
-          </p>
 
           <Form
             onFinish={handleSubmit}
