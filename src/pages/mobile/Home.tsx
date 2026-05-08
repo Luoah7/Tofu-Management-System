@@ -24,7 +24,6 @@ type TaskStats = {
 const SUMMARY_CARDS = [
   { key: 'pendingWeigh', label: '待复秤', status: '待复秤' },
   { key: 'pendingDelivery', label: '待送达', status: '待送达' },
-  { key: 'completed', label: '已完成', status: '已完成' },
 ] as const;
 
 export default function MobileHome() {
