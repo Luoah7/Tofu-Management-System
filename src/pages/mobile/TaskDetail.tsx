@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Camera,
   CheckCircle2,
+  ImageUp,
   MapPin,
   Phone,
   Scale,
@@ -28,6 +29,12 @@ type TaskPhoto = {
   id: string;
   url: string;
   originalName: string;
+};
+
+type RecognizedWeight = {
+  weight: number;
+  unit: '斤' | '公斤';
+  rawText: string;
 };
 
 type Task = {
@@ -62,13 +69,19 @@ export default function TaskDetail() {
   const [weighValues, setWeighValues] = useState<Record<string, number>>({});
   const [totalWeigh, setTotalWeigh] = useState<number>(0);
   const [selectedPhotos, setSelectedPhotos] = useState<File[]>([]);
+  const [deliveryPhotos, setDeliveryPhotos] = useState<File[]>([]);
   const [sentBasket, setSentBasket] = useState(0);
   const [returnedBasket, setReturnedBasket] = useState(0);
   const [exceptionModal, setExceptionModal] = useState(false);
   const [exceptionReason, setExceptionReason] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const [recognizingWeight, setRecognizingWeight] = useState(false);
+  const [recognizedWeight, setRecognizedWeight] = useState<RecognizedWeight | null>(null);
   const albumInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const weighPhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const deliveryAlbumInputRef = useRef<HTMLInputElement | null>(null);
+  const deliveryCameraInputRef = useRef<HTMLInputElement | null>(null);
 
   const load = () => {
     if (!id) return;
@@ -85,6 +98,8 @@ export default function TaskDetail() {
         setWeighValues(nextWeighValues);
         setTotalWeigh(currentTask.actualWeight > 0 ? currentTask.actualWeight : currentTask.plannedWeight);
         setSelectedPhotos([]);
+        setDeliveryPhotos([]);
+        setRecognizedWeight(null);
         setSentBasket(currentTask.sentBasketCount);
         setReturnedBasket(currentTask.returnedBasketCount);
       })
@@ -103,20 +118,41 @@ export default function TaskDetail() {
     [selectedPhotos],
   );
 
+  const deliveryPhotoPreviews = useMemo(
+    () => deliveryPhotos.map(file => ({
+      name: file.name,
+      url: URL.createObjectURL(file),
+    })),
+    [deliveryPhotos],
+  );
+
   useEffect(() => () => {
     photoPreviews.forEach(photo => URL.revokeObjectURL(photo.url));
   }, [photoPreviews]);
 
+  useEffect(() => () => {
+    deliveryPhotoPreviews.forEach(photo => URL.revokeObjectURL(photo.url));
+  }, [deliveryPhotoPreviews]);
+
   const handleWeigh = async () => {
     if (!task) return;
+    if (selectedPhotos.length === 0) {
+      message.warning('称完要把照片一起传上来');
+      return;
+    }
+
     setActionLoading(true);
     try {
       const items = task.items.map(item => ({
         id: item.id,
         actualWeight: weighValues[item.id] || item.plannedWeight,
       }));
-      await api.put(`/tasks/${task.id}/weigh`, { actualWeight: totalWeigh, items });
-      message.success('复秤完成');
+      const formData = new FormData();
+      formData.append('actualWeight', String(totalWeigh));
+      formData.append('items', JSON.stringify(items));
+      selectedPhotos.forEach(photo => formData.append('photos', photo));
+      await api.putForm(`/tasks/${task.id}/weigh`, formData);
+      message.success('复秤和拍照已完成');
       load();
     } catch (err: any) {
       message.error(err.message);
@@ -125,24 +161,21 @@ export default function TaskDetail() {
     }
   };
 
-  const handlePhoto = async () => {
-    if (!task) return;
-    if (selectedPhotos.length === 0) {
-      message.warning('请先选择照片');
-      return;
-    }
+  const handleRecognizeWeight = async (file: File | null) => {
+    if (!task || !file) return;
 
-    setActionLoading(true);
+    setRecognizingWeight(true);
     try {
       const formData = new FormData();
-      selectedPhotos.forEach(photo => formData.append('photos', photo));
-      await api.putForm(`/tasks/${task.id}/photo`, formData);
-      message.success('照片已上传');
-      load();
+      formData.append('photo', file);
+      const result = await api.postForm<RecognizedWeight>(`/tasks/${task.id}/weigh/recognize`, formData);
+      setRecognizedWeight(result);
+      setTotalWeigh(result.weight);
+      message.success(`已识别 ${result.weight}斤`);
     } catch (err: any) {
       message.error(err.message);
     } finally {
-      setActionLoading(false);
+      setRecognizingWeight(false);
     }
   };
 
@@ -156,11 +189,24 @@ export default function TaskDetail() {
     setSelectedPhotos(prev => prev.filter((_, currentIndex) => currentIndex !== index));
   };
 
+  const appendDeliveryPhotos = (files: FileList | null) => {
+    if (!files?.length) return;
+    const nextPhotos = Array.from(files).filter(file => file.type.startsWith('image/'));
+    setDeliveryPhotos(prev => [...prev, ...nextPhotos]);
+  };
+
+  const removeDeliveryPhoto = (index: number) => {
+    setDeliveryPhotos(prev => prev.filter((_, currentIndex) => currentIndex !== index));
+  };
+
   const handleComplete = async () => {
     if (!task) return;
     setActionLoading(true);
     try {
-      await api.put(`/tasks/${task.id}/complete`, { signMethod: '现场确认' });
+      const formData = new FormData();
+      formData.append('signMethod', '现场确认');
+      deliveryPhotos.forEach(photo => formData.append('photos', photo));
+      await api.putForm(`/tasks/${task.id}/complete`, formData);
       if (sentBasket > 0 || returnedBasket > 0) {
         await api.put(`/tasks/${task.id}/basket`, {
           sentBasketCount: sentBasket,
@@ -214,7 +260,6 @@ export default function TaskDetail() {
       ? `多 ${formatWeight(totalDelta)}`
       : `少 ${formatWeight(Math.abs(totalDelta))}`;
   const isWeighStage = task.status === '待复秤' || task.status === '待配货';
-  const isPhotoStage = task.status === '待拍照';
   const isDeliveryStage = task.status === '待送达';
 
   return (
@@ -233,7 +278,7 @@ export default function TaskDetail() {
         <div className="mobile-inline-chips">
           <StatusBadge status={task.status} />
           <span className="mobile-chip mobile-chip--dark">{task.merchantType || '商户'}</span>
-          {task.routeEta ? <span className="mobile-chip mobile-chip--dark">{task.routeEta}</span> : null}
+          {task.status === '已完成' && task.completedAt ? <span className="mobile-chip mobile-chip--dark">{task.completedAt}</span> : null}
           {task.phone ? (
             <span className="mobile-chip mobile-chip--dark">
               <Phone size={14} />
@@ -255,6 +300,31 @@ export default function TaskDetail() {
           </div>
 
           <div className="mobile-surface mobile-surface--padded" style={{ marginTop: 14 }}>
+            <input
+              ref={weighPhotoInputRef}
+              className="mobile-hidden-input"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(event) => {
+                const file = event.target.files?.[0] || null;
+                handleRecognizeWeight(file);
+                event.target.value = '';
+              }}
+            />
+
+            <div className="mobile-photo-actions" style={{ marginBottom: 14 }}>
+              <Button
+                block
+                className="mobile-ghost-button"
+                icon={<ImageUp size={16} />}
+                loading={recognizingWeight}
+                onClick={() => weighPhotoInputRef.current?.click()}
+              >
+                拍照识别重量
+              </Button>
+            </div>
+
             <div className="mobile-input-grid">
               {task.items.map(item => (
                 <div key={item.id} className="mobile-input-row">
@@ -292,68 +362,45 @@ export default function TaskDetail() {
                 <span>应配 {formatWeight(task.plannedWeight)}</span>
                 <span>{deltaText}</span>
               </div>
+              {recognizedWeight ? (
+                <div className="mobile-recognition-note">
+                  已识别 {formatWeight(recognizedWeight.weight)}
+                </div>
+              ) : null}
             </div>
 
-            <Button
-              type="primary"
-              block
-              className="mobile-primary-button"
-              style={{ marginTop: 14 }}
-              icon={<Scale size={16} />}
-              loading={actionLoading}
-              onClick={handleWeigh}
-            >
-              确认复秤
-            </Button>
-          </div>
-        </div>
-      ) : null}
-
-      {isPhotoStage ? (
-        <div className="mobile-action-focus mobile-rise" style={{ animationDelay: '60ms' }}>
-          <div className="mobile-action-focus__head">
-            <div className="mobile-action-focus__badge">
-              <Camera size={18} />
-            </div>
-            <div>
-              <div className="mobile-action-focus__title">拍照</div>
-            </div>
-          </div>
-
-          <div className="mobile-surface mobile-surface--padded" style={{ marginTop: 14 }}>
-            <div className="mobile-photo-actions">
-              <input
-                ref={albumInputRef}
-                className="mobile-hidden-input"
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={(event) => {
-                  appendPhotos(event.target.files);
-                  event.target.value = '';
-                }}
-              />
-              <input
-                ref={cameraInputRef}
-                className="mobile-hidden-input"
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={(event) => {
-                  appendPhotos(event.target.files);
-                  event.target.value = '';
-                }}
-              />
-              <Button block className="mobile-ghost-button" onClick={() => albumInputRef.current?.click()}>
-                选相册
-              </Button>
-              <Button block className="mobile-ghost-button" onClick={() => cameraInputRef.current?.click()}>
-                打开相机
-              </Button>
-            </div>
-
-            <div className="mobile-field-card">
-              <div className="mobile-field-card__label">照片</div>
+            <div className="mobile-field-card" style={{ marginTop: 14 }}>
+              <div className="mobile-field-card__label">留档照片</div>
+              <div className="mobile-photo-actions">
+                <input
+                  ref={albumInputRef}
+                  className="mobile-hidden-input"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(event) => {
+                    appendPhotos(event.target.files);
+                    event.target.value = '';
+                  }}
+                />
+                <input
+                  ref={cameraInputRef}
+                  className="mobile-hidden-input"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(event) => {
+                    appendPhotos(event.target.files);
+                    event.target.value = '';
+                  }}
+                />
+                <Button block className="mobile-ghost-button" onClick={() => albumInputRef.current?.click()}>
+                  选相册
+                </Button>
+                <Button block className="mobile-ghost-button" onClick={() => cameraInputRef.current?.click()}>
+                  打开相机
+                </Button>
+              </div>
               <div className="mobile-panel-note">
                 <span>待上传 {selectedPhotos.length} 张</span>
                 <span>已存档 {task.photos?.length || 0} 张</span>
@@ -372,6 +419,7 @@ export default function TaskDetail() {
                 ))}
               </div>
             ) : null}
+
             <Button
               type="primary"
               block
@@ -379,9 +427,9 @@ export default function TaskDetail() {
               style={{ marginTop: 14 }}
               icon={<Camera size={16} />}
               loading={actionLoading}
-              onClick={handlePhoto}
+              onClick={handleWeigh}
             >
-              确认拍照
+              确认复秤并留档
             </Button>
           </div>
         </div>
@@ -399,33 +447,56 @@ export default function TaskDetail() {
           </div>
 
           <div className="mobile-surface mobile-surface--padded" style={{ marginTop: 14 }}>
-            <div className="mobile-dual-grid">
-              <div className="mobile-field-card">
-                <div className="mobile-field-card__label">送出</div>
-                <div className="mobile-number-input mobile-number-input--wide">
-                  <InputNumber
-                    min={0}
-                    value={sentBasket}
-                    onChange={value => setSentBasket(Number(value || 0))}
-                  />
-                </div>
+            <div className="mobile-field-card">
+              <div className="mobile-field-card__label">送达留档照片</div>
+              <div className="mobile-photo-actions">
+                <input
+                  ref={deliveryAlbumInputRef}
+                  className="mobile-hidden-input"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(event) => {
+                    appendDeliveryPhotos(event.target.files);
+                    event.target.value = '';
+                  }}
+                />
+                <input
+                  ref={deliveryCameraInputRef}
+                  className="mobile-hidden-input"
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={(event) => {
+                    appendDeliveryPhotos(event.target.files);
+                    event.target.value = '';
+                  }}
+                />
+                <Button block className="mobile-ghost-button" onClick={() => deliveryAlbumInputRef.current?.click()}>
+                  选相册
+                </Button>
+                <Button block className="mobile-ghost-button" onClick={() => deliveryCameraInputRef.current?.click()}>
+                  打开相机
+                </Button>
               </div>
-              <div className="mobile-field-card">
-                <div className="mobile-field-card__label">回收</div>
-                <div className="mobile-number-input mobile-number-input--wide">
-                  <InputNumber
-                    min={0}
-                    value={returnedBasket}
-                    onChange={value => setReturnedBasket(Number(value || 0))}
-                  />
-                </div>
+              <div className="mobile-panel-note">
+                <span>待上传 {deliveryPhotos.length} 张</span>
+                <span>已存档 {task.photos?.length || 0} 张</span>
               </div>
             </div>
 
-            <div className="mobile-panel-note">
-              <span>持筐</span>
-              <span>{task.beforeBasketCount} 个筐</span>
-            </div>
+            {deliveryPhotoPreviews.length > 0 ? (
+              <div className="mobile-photo-grid">
+                {deliveryPhotoPreviews.map((photo, index) => (
+                  <div key={`${photo.name}_${index}`} className="mobile-photo-card">
+                    <img src={photo.url} alt={photo.name} className="mobile-photo-card__image" />
+                    <button type="button" className="mobile-photo-card__remove" onClick={() => removeDeliveryPhoto(index)}>
+                      删除
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
 
             <div className="mobile-sticky-actions mobile-sticky-actions--inline">
               <Button
@@ -445,6 +516,36 @@ export default function TaskDetail() {
               >
                 确认送达
               </Button>
+            </div>
+
+            <div className="mobile-field-card" style={{ marginTop: 14 }}>
+              <div className="mobile-field-card__label">筐子记录</div>
+              <div className="mobile-dual-grid">
+                <div>
+                  <div className="mobile-field-card__label">送出</div>
+                  <div className="mobile-number-input mobile-number-input--wide">
+                    <InputNumber
+                      min={0}
+                      value={sentBasket}
+                      onChange={value => setSentBasket(Number(value || 0))}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <div className="mobile-field-card__label">回收</div>
+                  <div className="mobile-number-input mobile-number-input--wide">
+                    <InputNumber
+                      min={0}
+                      value={returnedBasket}
+                      onChange={value => setReturnedBasket(Number(value || 0))}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="mobile-panel-note">
+                <span>当前持筐</span>
+                <span>{task.beforeBasketCount} 个</span>
+              </div>
             </div>
           </div>
         </div>
@@ -516,42 +617,6 @@ export default function TaskDetail() {
           ))}
         </div>
       </div>
-
-      {(task.status === '待送达' || task.status === '待拍照') && !isDeliveryStage ? (
-        <>
-          <SectionHeading title="筐子" />
-
-          <div className="mobile-surface mobile-surface--padded mobile-rise" style={{ animationDelay: '320ms' }}>
-            <div className="mobile-dual-grid">
-              <div className="mobile-field-card">
-                <div className="mobile-field-card__label">送出</div>
-                <div className="mobile-number-input mobile-number-input--wide">
-                  <InputNumber
-                    min={0}
-                    value={sentBasket}
-                    onChange={value => setSentBasket(Number(value || 0))}
-                  />
-                </div>
-              </div>
-              <div className="mobile-field-card">
-                <div className="mobile-field-card__label">回收</div>
-                <div className="mobile-number-input mobile-number-input--wide">
-                  <InputNumber
-                    min={0}
-                    value={returnedBasket}
-                    onChange={value => setReturnedBasket(Number(value || 0))}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="mobile-panel-note">
-              <span>持筐</span>
-              <span>{task.beforeBasketCount} 个筐</span>
-            </div>
-          </div>
-        </>
-      ) : null}
 
       <Modal
         title="记录异常"

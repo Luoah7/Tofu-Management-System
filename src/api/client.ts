@@ -44,6 +44,7 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}): Prom
 export const api = {
   get: <T>(path: string) => apiFetch<T>(path),
   post: <T>(path: string, body: any) => apiFetch<T>(path, { method: 'POST', body: JSON.stringify(body) }),
+  postForm: <T>(path: string, body: FormData) => apiFetch<T>(path, { method: 'POST', body }),
   put: <T>(path: string, body: any) => apiFetch<T>(path, { method: 'PUT', body: JSON.stringify(body) }),
   putForm: <T>(path: string, body: FormData) => apiFetch<T>(path, { method: 'PUT', body }),
   del: <T>(path: string) => apiFetch<T>(path, { method: 'DELETE' }),

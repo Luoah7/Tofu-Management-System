@@ -74,6 +74,30 @@ npm run start
 
 项目默认把数据库放在 `data/` 目录下，该目录不会进入 git。
 
+### 版本记录
+
+#### v0.3.0
+
+- 移动端任务流重构为 `待配货 → 待复秤 → 待送达 → 已完成`
+- 复秤与拍照合并为一步，支持秤面照片识别重量
+- 送达阶段支持再次拍照留档，异常记录优先于筐子录入
+- 批量导入支持更接近真实微信口语的订货表达
+- 首页与任务页移动端布局重做，首屏操作更直接
+- 浏览器标签页标题改为跟随品牌变量
+
+#### v0.2.0
+
+- 补齐移动端管理页中的商户管理和商品管理入口
+- 新增移动端手动补录、批量导入、任务预览确认
+- 增加任务删除、日期筛选、商户筛选和收入指标
+- 引入 R2 上传支持与本地部署文档
+
+#### v0.1.0
+
+- 初始化豆腐配送管理系统基础架构
+- 提供商户、商品、任务、结算和小票的基本能力
+- 提供 React + Hono + SQLite 的单仓部署方案
+
 ## English
 
 Doufu is a lightweight operations system for tofu and fresh soy product distribution. It covers merchant management, product management, delivery tasks, mobile execution, settlement, receipt printing, and merchant bill lookup in one compact workflow.
@@ -145,6 +169,30 @@ npm run start
 ```
 
 By default, the database is stored under `data/`, which is ignored by git.
+
+### Version History
+
+#### v0.3.0
+
+- Refactored the mobile task flow into `Pending Allocation → Pending Weigh → Pending Delivery → Completed`
+- Merged weighing and photo logging into one step, with scale photo weight recognition
+- Added delivery-stage photo archiving and prioritized exception handling over basket entry
+- Improved bulk import to support more natural WeChat-style order phrases
+- Refreshed the mobile home and task screens for faster first-screen actions
+- Synced the browser tab title with the business profile variable
+
+#### v0.2.0
+
+- Completed mobile management entry points for merchants and products
+- Added manual entry, bulk import, and preview confirmation on mobile
+- Added task deletion, date filtering, merchant filtering, and revenue metrics
+- Added R2 upload support and deployment documentation
+
+#### v0.1.0
+
+- Initial project structure for the tofu delivery management system
+- Delivered baseline flows for merchants, products, tasks, settlement, and receipts
+- Set up a single-repo deployment model with React, Hono, and SQLite
 
 ## License
 

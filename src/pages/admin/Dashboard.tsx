@@ -3,7 +3,6 @@ import { Card, Row, Col, Statistic, Table, Tag, Spin, Alert, Space } from 'antd'
 import {
   ShoppingOutlined,
   SwapOutlined,
-  CameraOutlined,
   CheckCircleOutlined,
   WarningOutlined,
   AccountBookOutlined,
@@ -15,7 +14,6 @@ import { formatMoney } from '@/utils/format';
 type TaskStats = {
   total: number;
   pendingWeigh: number;
-  pendingPhoto: number;
   pendingDelivery: number;
   completed: number;
   exception: number;
@@ -61,7 +59,7 @@ export default function Dashboard() {
   const merchantsWithBaskets = merchants.filter(m => m.basketCount > 0 && m.status === '启用');
 
   const statusColors: Record<string, string> = {
-    '待配货': 'default', '待复秤': 'processing', '待拍照': 'warning',
+    '待配货': 'default', '待复秤': 'processing',
     '待送达': 'orange', '已完成': 'success', '异常': 'error',
   };
 
@@ -95,7 +93,7 @@ export default function Dashboard() {
           <Card><Statistic title="待复秤" value={stats?.pendingWeigh || 0} prefix={<SwapOutlined />} valueStyle={{ color: '#1677ff' }} /></Card>
         </Col>
         <Col xs={12} sm={8} lg={4}>
-          <Card><Statistic title="待拍照" value={stats?.pendingPhoto || 0} prefix={<CameraOutlined />} valueStyle={{ color: '#faad14' }} /></Card>
+          <Card><Statistic title="待送达" value={stats?.pendingDelivery || 0} prefix={<InboxOutlined />} valueStyle={{ color: '#d46b08' }} /></Card>
         </Col>
         <Col xs={12} sm={8} lg={4}>
           <Card><Statistic title="已完成" value={stats?.completed || 0} prefix={<CheckCircleOutlined />} valueStyle={{ color: '#52c41a' }} /></Card>

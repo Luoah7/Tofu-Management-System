@@ -1,58 +1,41 @@
 import React, { useEffect, useState } from 'react';
 import { Spin } from 'antd';
 import { AlertTriangle } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { api } from '@/api/client';
 import {
   EmptyState,
   SectionHeading,
-  TaskCard,
   getStatusMeta,
 } from '@/components/mobile/shared';
 import { businessProfile } from '@/config/public';
-import { formatWeight } from '@/utils/format';
+import { formatMoney, formatWeight } from '@/utils/format';
 
 type TaskStats = {
   total: number;
   pendingWeigh: number;
-  pendingPhoto: number;
   pendingDelivery: number;
   completed: number;
   exception: number;
   totalPlannedWeight: number;
-};
-
-type Task = {
-  id: string;
-  merchantName: string;
-  status: string;
-  plannedWeight: number;
-  routeEta: string;
-  items: Array<{ productName: string; plannedWeight: number }>;
+  todayRevenue: number;
+  monthRevenue: number;
 };
 
 const SUMMARY_CARDS = [
   { key: 'pendingWeigh', label: '待复秤', status: '待复秤' },
-  { key: 'pendingPhoto', label: '待拍照', status: '待拍照' },
   { key: 'pendingDelivery', label: '待送达', status: '待送达' },
   { key: 'completed', label: '已完成', status: '已完成' },
 ] as const;
 
 export default function MobileHome() {
   const [stats, setStats] = useState<TaskStats | null>(null);
-  const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
   const today = new Date().toISOString().slice(0, 10);
 
   useEffect(() => {
-    Promise.all([
-      api.get<TaskStats>(`/tasks/stats?date=${today}`),
-      api.get<Task[]>(`/tasks?date=${today}`),
-    ])
-      .then(([taskStats, taskList]) => {
+    api.get<TaskStats>(`/tasks/stats?date=${today}`)
+      .then((taskStats) => {
         setStats(taskStats);
-        setTasks(taskList);
       })
       .finally(() => setLoading(false));
   }, [today]);
@@ -68,14 +51,14 @@ export default function MobileHome() {
   const currentStats = stats ?? {
     total: 0,
     pendingWeigh: 0,
-    pendingPhoto: 0,
     pendingDelivery: 0,
     completed: 0,
     exception: 0,
     totalPlannedWeight: 0,
+    todayRevenue: 0,
+    monthRevenue: 0,
   };
 
-  const pendingTasks = tasks.filter(task => task.status !== '已完成' && task.status !== '异常');
   const progress = currentStats.total > 0
     ? Math.round((currentStats.completed / currentStats.total) * 100)
     : 0;
@@ -99,11 +82,18 @@ export default function MobileHome() {
           <span>今日 {currentStats.total} 单</span>
           <span>预计 {formatWeight(currentStats.totalPlannedWeight)}</span>
         </div>
-        <div className="mobile-inline-chips">
-          <span className="mobile-chip mobile-chip--light">进行中 {pendingTasks.length} 单</span>
-          <span className="mobile-chip mobile-chip--dark">异常 {currentStats.exception} 单</span>
-        </div>
       </section>
+
+      <div className="mobile-stat-grid mobile-stat-grid--duo">
+        <div className="mobile-kpi-card mobile-rise" style={{ animationDelay: '70ms' }}>
+          <span>今日收入</span>
+          <strong>{formatMoney(currentStats.todayRevenue)}</strong>
+        </div>
+        <div className="mobile-kpi-card mobile-rise" style={{ animationDelay: '120ms' }}>
+          <span>当月收入</span>
+          <strong>{formatMoney(currentStats.monthRevenue)}</strong>
+        </div>
+      </div>
 
       <div className="mobile-stat-grid">
         {SUMMARY_CARDS.map((item, index) => {
@@ -155,22 +145,41 @@ export default function MobileHome() {
       ) : null}
 
       <SectionHeading
-        title="配送清单"
-        extra={`${pendingTasks.length} 单未完成`}
+        title="今日概览"
+        extra={`完成率 ${progress}%`}
       />
 
-      {pendingTasks.length === 0 ? (
-        <EmptyState title="没有待处理任务" />
-      ) : (
-        pendingTasks.map((task, index) => (
-          <TaskCard
-            key={task.id}
-            task={task}
-            delayMs={320 + index * 70}
-            onClick={() => navigate(`/mobile/tasks/${task.id}`)}
-          />
-        ))
-      )}
+      <div className="mobile-surface mobile-surface--padded mobile-rise" style={{ animationDelay: '320ms' }}>
+        <div className="mobile-info-list">
+          <div className="mobile-info-row">
+            <div>
+              <div className="mobile-info-row__title">今日任务</div>
+              <div className="mobile-info-row__meta">已录入任务总数</div>
+            </div>
+            <div className="mobile-info-row__value">
+              <strong>{currentStats.total} 单</strong>
+            </div>
+          </div>
+          <div className="mobile-info-row">
+            <div>
+              <div className="mobile-info-row__title">已完成</div>
+              <div className="mobile-info-row__meta">今日已完成配送</div>
+            </div>
+            <div className="mobile-info-row__value">
+              <strong>{currentStats.completed} 单</strong>
+            </div>
+          </div>
+          <div className="mobile-info-row">
+            <div>
+              <div className="mobile-info-row__title">待处理</div>
+              <div className="mobile-info-row__meta">待配货、待复秤、待送达</div>
+            </div>
+            <div className="mobile-info-row__value">
+              <strong>{currentStats.pendingWeigh + currentStats.pendingDelivery} 单</strong>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -54,7 +54,7 @@ export default function OrderList() {
   );
 
   const statusColors: Record<string, string> = {
-    '待配货': 'default', '待复秤': 'processing', '待拍照': 'warning',
+    '待配货': 'default', '待复秤': 'processing',
     '待送达': 'orange', '已完成': 'success', '异常': 'error',
   };
 

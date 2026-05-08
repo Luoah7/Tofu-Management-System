@@ -129,7 +129,7 @@ insertTaskItem.run('ti_4', 'task_liuji', 'prod_tofu', 'spec_tofu_2', '豆腐', '
 insertTaskItem.run('ti_5', 'task_liuji', 'prod_dry_tofu', 'spec_seasoned_dry_6', '豆干（调味）', '调味 ¥6/斤', 6, 1, 8, 0);
 insertTaskItem.run('ti_6', 'task_liuji', 'prod_dry_tofu', 'spec_plain_dry_5', '豆干（未调味）', '未调味 ¥5/斤', 5, 1, 6, 0);
 
-insertTask.run('task_lingshou', today, 'merchant_lingshou', '散户零售', '散户', '门店现场自提', '', '随到随卖', '待拍照', '当日结清', 9, 9.2, 1, 0, 0, 0, '', adminDisplayName);
+insertTask.run('task_lingshou', today, 'merchant_lingshou', '散户零售', '散户', '门店现场自提', '', '随到随卖', '待送达', '当日结清', 9, 9.2, 1, 0, 0, 0, '', adminDisplayName);
 insertTaskItem.run('ti_7', 'task_lingshou', 'prod_tofu', 'spec_tofu_2', '豆腐', '常规价 ¥2/斤', 2, 1, 4, 4.2);
 insertTaskItem.run('ti_8', 'task_lingshou', 'prod_crispy_tofu', 'spec_crispy_tofu_6', '脆皮豆腐', '常规价 ¥6/斤', 6, 1, 5, 5);
 

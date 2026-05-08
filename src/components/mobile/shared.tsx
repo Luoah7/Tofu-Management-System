@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock3,
+  MoreHorizontal,
   Package,
   Scale,
   Truck,
@@ -27,7 +28,6 @@ const FALLBACK_STATUS: StatusMeta = {
 export const STATUS_META: Record<string, StatusMeta> = {
   待配货: { icon: Package, tone: 'slate' },
   待复秤: { icon: Scale, tone: 'blue' },
-  待拍照: { icon: Camera, tone: 'amber' },
   待送达: { icon: Truck, tone: 'orange' },
   已完成: { icon: CheckCircle2, tone: 'green' },
   异常: { icon: AlertTriangle, tone: 'red' },
@@ -101,6 +101,7 @@ export type TaskCardTask = {
   status: string;
   plannedWeight: number;
   actualWeight?: number;
+  completedAt?: string;
   routeEta: string;
   items: TaskCardItem[];
 };
@@ -108,57 +109,84 @@ export type TaskCardTask = {
 type TaskCardProps = {
   task: TaskCardTask;
   onClick?: () => void;
+  onDelete?: () => void;
   lead?: string;
   delayMs?: number;
 };
 
-export function TaskCard({ task, onClick, lead, delayMs = 0 }: TaskCardProps) {
+export function TaskCard({ task, onClick, onDelete, lead, delayMs = 0 }: TaskCardProps) {
   const previewItems = task.items.slice(0, 3);
   const restCount = Math.max(0, task.items.length - previewItems.length);
   const weightLabel = task.actualWeight && task.actualWeight > 0
     ? `实秤 ${formatWeight(task.actualWeight)}`
     : `应配 ${formatWeight(task.plannedWeight)}`;
+  const showCompletedAt = task.status === '已完成' && task.completedAt;
 
   return (
-    <button
-      type="button"
-      className="task-card mobile-rise"
-      onClick={onClick}
-      style={{ animationDelay: `${delayMs}ms` }}
-    >
-      <div className="task-card__topline">
-        {lead ? <span className="task-card__lead">{lead}</span> : <span />}
-        <StatusBadge status={task.status} />
-      </div>
-
-      <div className="task-card__head">
-        <div>
-          <div className="task-card__title">{task.merchantName}</div>
-          {task.routeEta ? (
-            <div className="task-card__eta">
-              <Clock3 size={14} />
-              <span>{task.routeEta}</span>
+    <div className="task-card-shell mobile-rise" style={{ animationDelay: `${delayMs}ms` }}>
+      <button
+        type="button"
+        className="task-card"
+        onClick={onClick}
+      >
+        <div className="task-card__head">
+          <div className="task-card__main">
+            {lead ? <span className="task-card__lead">{lead}</span> : null}
+            <div>
+              <div className="task-card__title">{task.merchantName}</div>
+              {showCompletedAt ? (
+                <div className="task-card__eta">
+                  <Clock3 size={14} />
+                  <span>{task.completedAt}</span>
+                </div>
+              ) : null}
             </div>
-          ) : null}
+          </div>
+          <div className="task-card__head-side">
+            {onDelete ? (
+              <span
+                role="button"
+                tabIndex={0}
+                className="task-card__delete"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDelete();
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onDelete();
+                  }
+                }}
+              >
+                <MoreHorizontal size={15} />
+                <span>删除</span>
+              </span>
+            ) : null}
+            <div className="task-card__head-meta">
+              <StatusBadge status={task.status} />
+              <div className="task-card__arrow">
+                <ChevronRight size={18} />
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="task-card__arrow">
-          <ChevronRight size={18} />
+
+        <div className="task-card__chips">
+          {previewItems.map(item => (
+            <span key={`${task.id}_${item.productName}`} className="task-card__chip">
+              {item.productName} {formatWeight(item.plannedWeight)}
+            </span>
+          ))}
+          {restCount > 0 ? <span className="task-card__chip task-card__chip--more">+{restCount} 项</span> : null}
         </div>
-      </div>
 
-      <div className="task-card__chips">
-        {previewItems.map(item => (
-          <span key={`${task.id}_${item.productName}`} className="task-card__chip">
-            {item.productName} {formatWeight(item.plannedWeight)}
-          </span>
-        ))}
-        {restCount > 0 ? <span className="task-card__chip task-card__chip--more">+{restCount} 项</span> : null}
-      </div>
-
-      <div className="task-card__footer">
-        <span>{weightLabel}</span>
-        <span>{task.items.length} 个品项</span>
-      </div>
-    </button>
+        <div className="task-card__footer">
+          <span>{weightLabel}</span>
+          <span>{task.items.length} 个品项</span>
+        </div>
+      </button>
+    </div>
   );
 }
