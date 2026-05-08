@@ -1,12 +1,11 @@
 import { Hono } from 'hono';
 import { eq, and, sql } from 'drizzle-orm';
-import fs from 'fs';
 import path from 'path';
 import { db, deliveryTasks, taskItems, taskPhotos, merchants, products as productsTable, productSpecs } from '../db.js';
 import { authMiddleware } from '../auth.js';
 import { parseWeChatText, matchProduct } from '../utils/wechat-parser.js';
 import { v4 as uuid } from 'uuid';
-import { getTaskPhotoPath, getTaskPhotoUrl, removeTaskPhoto } from '../uploads.js';
+import { getTaskPhotoUrl, removeTaskPhoto, saveTaskPhoto } from '../uploads.js';
 
 const tasksRoutes = new Hono();
 tasksRoutes.use('*', authMiddleware);
@@ -271,7 +270,7 @@ tasksRoutes.put('/:id/photo', async (c) => {
 
       const fileName = `${uuid()}${getPhotoExtension(file)}`;
       const bytes = Buffer.from(await file.arrayBuffer());
-      fs.writeFileSync(getTaskPhotoPath(id, fileName), bytes);
+      await saveTaskPhoto(id, fileName, bytes, file.type || 'image/jpeg');
 
       await db.insert(taskPhotos).values({
         id: `photo_${uuid().slice(0, 8)}`,

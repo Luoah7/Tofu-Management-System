@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@ant-design/icons": "^5.6.1",
+    "@aws-sdk/client-s3": "^3.1045.0",
     "@hono/node-server": "^2.0.1",
     "antd": "^5.24.7",
     "antd-mobile": "^5.42.3",
