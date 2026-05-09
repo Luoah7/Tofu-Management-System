@@ -1,25 +1,33 @@
-import React, { Component } from 'react';
+import React, { Component, Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { Spin } from 'antd';
 import { useAuth } from '@/hooks/useAuth';
-import Login from '@/pages/Login';
-import AdminLayout from '@/components/AdminLayout';
-import MobileLayout from '@/components/MobileLayout';
-import Dashboard from '@/pages/admin/Dashboard';
-import MerchantConfig from '@/pages/admin/MerchantConfig';
-import OrderList from '@/pages/admin/OrderList';
-import Allocation from '@/pages/admin/Allocation';
-import Settlement from '@/pages/admin/Settlement';
-import Receipt from '@/pages/admin/Receipt';
-import Products from '@/pages/admin/Products';
-import MobileHome from '@/pages/mobile/Home';
-import MobileTasks from '@/pages/mobile/Tasks';
-import MobileTaskDetail from '@/pages/mobile/TaskDetail';
-import MobileManage from '@/pages/mobile/Manage';
-import MobileMerchants from '@/pages/mobile/Merchants';
-import MobileProducts from '@/pages/mobile/Products';
-import MobileSettings from '@/pages/mobile/Settings';
-import MerchantBill from '@/pages/bill/MerchantBill';
+
+const Login = lazy(() => import('@/pages/Login'));
+const AdminLayout = lazy(() => import('@/components/AdminLayout'));
+const MobileLayout = lazy(() => import('@/components/MobileLayout'));
+const Dashboard = lazy(() => import('@/pages/admin/Dashboard'));
+const MerchantConfig = lazy(() => import('@/pages/admin/MerchantConfig'));
+const OrderList = lazy(() => import('@/pages/admin/OrderList'));
+const Allocation = lazy(() => import('@/pages/admin/Allocation'));
+const Settlement = lazy(() => import('@/pages/admin/Settlement'));
+const Receipt = lazy(() => import('@/pages/admin/Receipt'));
+const Products = lazy(() => import('@/pages/admin/Products'));
+const MobileHome = lazy(() => import('@/pages/mobile/Home'));
+const MobileTasks = lazy(() => import('@/pages/mobile/Tasks'));
+const MobileTaskDetail = lazy(() => import('@/pages/mobile/TaskDetail'));
+const MobileManage = lazy(() => import('@/pages/mobile/Manage'));
+const MobileMerchants = lazy(() => import('@/pages/mobile/Merchants'));
+const MobileProducts = lazy(() => import('@/pages/mobile/Products'));
+const MobileSettings = lazy(() => import('@/pages/mobile/Settings'));
+const MerchantBill = lazy(() => import('@/pages/bill/MerchantBill'));
+
+function FullscreenLoading() {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', color: '#17362d', fontWeight: 700 }}>
+      加载中
+    </div>
+  );
+}
 
 function getAuthedHomePath() {
   const ua = navigator.userAgent.toLowerCase();
@@ -52,46 +60,48 @@ function AppContent() {
   const authedHomePath = getAuthedHomePath();
 
   if (loading) {
-    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Spin size="large" /></div>;
+    return <FullscreenLoading />;
   }
 
   return (
-    <Routes>
-      <Route path="/bill/:merchantId" element={<MerchantBill />} />
-      <Route path="/login" element={user ? <Navigate to={authedHomePath} replace /> : <Login onLogin={login} />} />
-      <Route path="/admin/*" element={
-        user ? (
-          <AdminLayout user={user} onLogout={() => { logout(); navigate('/login'); }}>
-            <Routes>
-              <Route index element={<Dashboard />} />
-              <Route path="merchants" element={<MerchantConfig />} />
-              <Route path="products" element={<Products />} />
-              <Route path="orders" element={<OrderList />} />
-              <Route path="allocation" element={<Allocation />} />
-              <Route path="settlement" element={<Settlement />} />
-              <Route path="receipt" element={<Receipt />} />
-            </Routes>
-          </AdminLayout>
-        ) : <Navigate to="/login" replace />
-      } />
-      <Route path="/mobile/*" element={
-        user ? (
-          <MobileLayout>
-            <Routes>
-              <Route index element={<MobileHome />} />
-              <Route path="tasks" element={<MobileTasks />} />
-              <Route path="tasks/:id" element={<MobileTaskDetail />} />
-              <Route path="manage" element={<MobileManage user={user} onLogout={() => { logout(); navigate('/login'); }} />} />
-              <Route path="manage/merchants" element={<MobileMerchants />} />
-              <Route path="manage/products" element={<MobileProducts />} />
-              <Route path="manage/settings" element={<MobileSettings />} />
-            </Routes>
-          </MobileLayout>
-        ) : <Navigate to="/login" replace />
-      } />
-      <Route path="/" element={<Navigate to={user ? authedHomePath : '/login'} replace />} />
-      <Route path="*" element={<Navigate to={user ? authedHomePath : '/login'} replace />} />
-    </Routes>
+    <Suspense fallback={<FullscreenLoading />}>
+      <Routes>
+        <Route path="/bill/:merchantId" element={<MerchantBill />} />
+        <Route path="/login" element={user ? <Navigate to={authedHomePath} replace /> : <Login onLogin={login} />} />
+        <Route path="/admin/*" element={
+          user ? (
+            <AdminLayout user={user} onLogout={() => { logout(); navigate('/login'); }}>
+              <Routes>
+                <Route index element={<Dashboard />} />
+                <Route path="merchants" element={<MerchantConfig />} />
+                <Route path="products" element={<Products />} />
+                <Route path="orders" element={<OrderList />} />
+                <Route path="allocation" element={<Allocation />} />
+                <Route path="settlement" element={<Settlement />} />
+                <Route path="receipt" element={<Receipt />} />
+              </Routes>
+            </AdminLayout>
+          ) : <Navigate to="/login" replace />
+        } />
+        <Route path="/mobile/*" element={
+          user ? (
+            <MobileLayout>
+              <Routes>
+                <Route index element={<MobileHome />} />
+                <Route path="tasks" element={<MobileTasks />} />
+                <Route path="tasks/:id" element={<MobileTaskDetail />} />
+                <Route path="manage" element={<MobileManage user={user} onLogout={() => { logout(); navigate('/login'); }} />} />
+                <Route path="manage/merchants" element={<MobileMerchants />} />
+                <Route path="manage/products" element={<MobileProducts />} />
+                <Route path="manage/settings" element={<MobileSettings />} />
+              </Routes>
+            </MobileLayout>
+          ) : <Navigate to="/login" replace />
+        } />
+        <Route path="/" element={<Navigate to={user ? authedHomePath : '/login'} replace />} />
+        <Route path="*" element={<Navigate to={user ? authedHomePath : '/login'} replace />} />
+      </Routes>
+    </Suspense>
   );
 }
 
