@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronRight, LogOut, Package2, Store } from 'lucide-react';
+import { ChevronRight, LogOut, Package2, Settings, Store } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { SectionHeading } from '@/components/mobile/shared';
 
@@ -18,6 +18,11 @@ const SHORTCUTS = [
     title: '商品管理',
     icon: Package2,
     path: '/mobile/manage/products',
+  },
+  {
+    title: '全局设置',
+    icon: Settings,
+    path: '/mobile/manage/settings',
   },
 ] as const;
 

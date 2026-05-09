@@ -93,6 +93,12 @@ export const taskPhotos = sqliteTable('task_photos', {
   createdAt: text('created_at').notNull().default(sql`(datetime('now','localtime'))`),
 });
 
+export const appSettings = sqliteTable('app_settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now','localtime'))`),
+});
+
 export const settlements = sqliteTable('settlements', {
   id: text('id').primaryKey(),
   merchantId: text('merchant_id').notNull().references(() => merchants.id),
@@ -207,6 +213,11 @@ export function initDatabase() {
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
     CREATE INDEX IF NOT EXISTS idx_task_photos_task ON task_photos(task_id);
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
     CREATE TABLE IF NOT EXISTS settlements (
       id TEXT PRIMARY KEY, merchant_id TEXT NOT NULL REFERENCES merchants(id),
       merchant_name TEXT NOT NULL, period_start TEXT NOT NULL, period_end TEXT NOT NULL,

@@ -50,10 +50,14 @@ function buildLocalResult(itemName: string, products: ProductCandidate[]): Produ
 
 export async function matchProductWithModel(itemName: string, products: ProductCandidate[]): Promise<ProductMatchResult | null> {
   const localMatched = buildLocalResult(itemName, products);
+  if (localMatched) {
+    return localMatched;
+  }
+
   const config = getDeepSeekConfig();
 
   if (!config.enabled || products.length === 0) {
-    return localMatched;
+    return null;
   }
 
   const candidateProducts = products
@@ -118,7 +122,7 @@ export async function matchProductWithModel(itemName: string, products: ProductC
     const matchedSpec = product.specs.find(spec => spec.id === specId);
 
     if (!matchedSpec) {
-      return localMatched;
+      return null;
     }
 
     return {
@@ -129,6 +133,6 @@ export async function matchProductWithModel(itemName: string, products: ProductC
       unitPrice: matchedSpec.unitPrice,
     };
   } catch {
-    return localMatched;
+    return null;
   }
 }

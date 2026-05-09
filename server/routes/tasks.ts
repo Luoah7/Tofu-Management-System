@@ -7,6 +7,7 @@ import { parseOrderText } from '../utils/order-parser.js';
 import { matchProductWithModel } from '../utils/product-matcher.js';
 import { isTestMerchantName } from '../utils/task-filters.js';
 import { recognizeWeightFromImage } from '../utils/weigh-recognizer.js';
+import { loadTaskItemSettings } from '../utils/app-settings.js';
 import { v4 as uuid } from 'uuid';
 import { getTaskPhotoUrl, removeTaskPhoto, saveTaskPhoto } from '../uploads.js';
 import { normalizeTaskItemInput } from '../../src/shared/task-item.js';
@@ -41,6 +42,120 @@ function findMerchantByName(orderMerchantName: string, merchantList: Array<typeo
     }
     return rawName.includes(candidate) || candidate.includes(rawName);
   }) || null;
+}
+
+type MerchantCandidate = {
+  id: string;
+  name: string;
+  type: string;
+  phone: string;
+  address: string;
+  settlementDay: string;
+};
+
+type ProductCandidate = {
+  id: string;
+  name: string;
+  specs: Array<{ id: string; label: string; unitPrice: number }>;
+};
+
+function countInputLines(text: string) {
+  return text.split(/\r?\n/).map(line => line.trim()).filter(Boolean).length;
+}
+
+export async function buildWechatPreview({
+  text,
+  taskDate,
+  merchants: merchantList,
+  products: productsWithSpecs,
+}: {
+  text: string;
+  taskDate: string;
+  merchants: MerchantCandidate[];
+  products: ProductCandidate[];
+}) {
+  const parsed = await parseOrderText(text);
+  const previewTasks = [];
+  const skippedMerchants: string[] = [];
+  const unrecognizedSegments: string[] = [];
+  let ruleMatchedCount = 0;
+  let modelFallbackCount = 0;
+
+  for (const order of parsed) {
+    const merchant = findMerchantByName(order.merchantName, merchantList as Array<typeof merchants.$inferSelect>);
+    if (!merchant) {
+      skippedMerchants.push(order.merchantName);
+      continue;
+    }
+
+    const warnings = order.warnings || [];
+    unrecognizedSegments.push(...warnings);
+    unrecognizedSegments.push(...(order.unrecognizedSegments || []));
+
+    const items = [];
+    let totalWeight = 0;
+
+    for (const item of order.items) {
+      const matched = await matchProductWithModel(item.name, productsWithSpecs);
+      if (!matched) {
+        unrecognizedSegments.push(`${item.name}，商品或规格未匹配，需人工确认`);
+        continue;
+      }
+
+      const source = item.source || 'rule';
+      if (source === 'model') {
+        modelFallbackCount += 1;
+      } else {
+        ruleMatchedCount += 1;
+      }
+
+      items.push({
+        productId: matched.productId,
+        specId: matched.specId,
+        productName: matched.name,
+        specLabel: matched.specLabel,
+        unitPrice: matched.unitPrice,
+        displayAmount: item.amount || item.weight,
+        displayUnit: item.unit || '斤',
+        plannedWeight: item.weight,
+        source,
+        needsConfirmation: source === 'model',
+      });
+      totalWeight += item.weight;
+    }
+
+    if (items.length === 0) continue;
+
+    previewTasks.push({
+      taskDate,
+      merchantId: merchant.id,
+      merchantName: merchant.name,
+      merchantType: merchant.type,
+      address: merchant.address,
+      phone: merchant.phone,
+      settlementDay: merchant.settlementDay,
+      routeEta: '',
+      plannedWeight: totalWeight,
+      items,
+      warnings,
+    });
+  }
+
+  const uniqueSkippedMerchants = Array.from(new Set(skippedMerchants));
+  const uniqueUnrecognizedSegments = Array.from(new Set(unrecognizedSegments));
+
+  return {
+    tasks: previewTasks,
+    skippedMerchants: uniqueSkippedMerchants,
+    unrecognizedSegments: uniqueUnrecognizedSegments,
+    stats: {
+      totalLines: countInputLines(text),
+      ruleMatchedCount,
+      modelFallbackCount,
+      unrecognizedCount: uniqueUnrecognizedSegments.length,
+      skippedMerchantCount: uniqueSkippedMerchants.length,
+    },
+  };
 }
 
 function getPhotoExtension(file: File) {
@@ -254,6 +369,7 @@ tasksRoutes.post('/parse-wechat', async (c) => {
   const { text, date } = await c.req.json<{ text: string; date?: string }>();
   const taskDate = date || getTaskDate(1);
 
+  await loadTaskItemSettings();
   const parsed = await parseOrderText(text);
   if (parsed.length === 0) {
     return c.json({ error: '未能解析出有效订单，请检查格式', parsed: [] }, 400);
@@ -349,11 +465,7 @@ tasksRoutes.post('/preview-wechat', async (c) => {
   const { text, date } = await c.req.json<{ text: string; date?: string }>();
   const taskDate = date || getTaskDate(1);
 
-  const parsed = await parseOrderText(text);
-  if (parsed.length === 0) {
-    return c.json({ error: '未能解析出有效订单，请检查格式', parsed: [] }, 400);
-  }
-
+  await loadTaskItemSettings();
   const allMerchants = await db.select().from(merchants);
   const allProducts = await db.select().from(productsTable);
   const allSpecs = await db.select().from(productSpecs);
@@ -362,64 +474,21 @@ tasksRoutes.post('/preview-wechat', async (c) => {
     specs: allSpecs.filter(s => s.productId === p.id),
   }));
 
-  const previewTasks = [];
-  const skippedMerchants: string[] = [];
+  const preview = await buildWechatPreview({
+    text,
+    taskDate,
+    merchants: allMerchants,
+    products: productsWithSpecs,
+  });
 
-  for (const order of parsed) {
-    const merchant = findMerchantByName(order.merchantName, allMerchants);
-    if (!merchant) {
-      skippedMerchants.push(order.merchantName);
-      continue;
-    }
-
-    const items = [];
-    let totalWeight = 0;
-
-    for (const item of order.items) {
-      const matched = await matchProductWithModel(item.name, productsWithSpecs);
-      if (!matched) continue;
-
-      items.push({
-        productId: matched.productId,
-        specId: matched.specId,
-        productName: matched.name,
-        specLabel: matched.specLabel,
-        unitPrice: matched.unitPrice,
-        displayAmount: item.amount || item.weight,
-        displayUnit: item.unit || '斤',
-        plannedWeight: item.weight,
-      });
-      totalWeight += item.weight;
-    }
-
-    if (items.length === 0) continue;
-
-    previewTasks.push({
-      taskDate,
-      merchantId: merchant.id,
-      merchantName: merchant.name,
-      merchantType: merchant.type,
-      address: merchant.address,
-      phone: merchant.phone,
-      settlementDay: merchant.settlementDay,
-      routeEta: '',
-      plannedWeight: totalWeight,
-      items,
-      warnings: order.warnings || [],
-    });
-  }
-
-  if (previewTasks.length === 0) {
-    const suffix = skippedMerchants.length > 0
-      ? `，未匹配商户：${Array.from(new Set(skippedMerchants)).join('、')}`
+  if (preview.tasks.length === 0) {
+    const suffix = preview.skippedMerchants.length > 0
+      ? `，未匹配商户：${preview.skippedMerchants.join('、')}`
       : '';
     return c.json({ error: `没有可导入任务${suffix}` }, 400);
   }
 
-  return c.json({
-    tasks: previewTasks,
-    skippedMerchants: Array.from(new Set(skippedMerchants)),
-  });
+  return c.json(preview);
 });
 
 // 更新任务

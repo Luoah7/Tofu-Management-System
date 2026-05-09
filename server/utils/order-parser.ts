@@ -3,8 +3,9 @@ import { normalizeOrderText, parseWeChatText } from './wechat-parser.js';
 
 type ParsedOrder = {
   merchantName: string;
-  items: Array<{ name: string; amount?: number; unit?: string; weight: number }>;
+  items: Array<{ name: string; amount?: number; unit?: string; weight: number; source?: 'rule' | 'model' }>;
   warnings?: string[];
+  unrecognizedSegments?: string[];
 };
 
 function extractJsonObject(content: string) {
@@ -33,6 +34,11 @@ function normalizeParsedOrders(input: unknown): ParsedOrder[] {
             .map((item: any) => String(item || '').trim())
             .filter(Boolean)
         : [];
+      const unrecognizedSegments = Array.isArray((entry as any).unrecognizedSegments)
+        ? (entry as any).unrecognizedSegments
+            .map((item: any) => String(item || '').trim())
+            .filter(Boolean)
+        : [];
       const items = Array.isArray((entry as any).items)
         ? (entry as any).items
             .map((item: any) => ({
@@ -40,21 +46,80 @@ function normalizeParsedOrders(input: unknown): ParsedOrder[] {
               amount: Number(item?.amount || item?.weight || 0),
               unit: String(item?.unit || '斤').trim(),
               weight: Number(item?.weight || 0),
+              source: 'model' as const,
             }))
             .filter((item: any) => item.name && Number.isFinite(item.weight) && item.weight > 0)
         : [];
 
-      if (!merchantName || (items.length === 0 && warnings.length === 0)) return null;
-      return warnings.length > 0 ? { merchantName, items, warnings } : { merchantName, items };
+      if (!merchantName || (items.length === 0 && warnings.length === 0 && unrecognizedSegments.length === 0)) return null;
+      return {
+        merchantName,
+        items,
+        ...(warnings.length > 0 && { warnings }),
+        ...(unrecognizedSegments.length > 0 && { unrecognizedSegments }),
+      };
     })
     .filter((item): item is ParsedOrder => item !== null);
 }
 
+function mergeParsedOrders(localParsed: ParsedOrder[], modelParsed: ParsedOrder[]) {
+  const merged: Array<ParsedOrder & { warnings: string[]; unrecognizedSegments: string[] }> = localParsed.map(order => ({
+    ...order,
+    items: [...order.items],
+    warnings: [...(order.warnings || [])],
+    unrecognizedSegments: [...(order.unrecognizedSegments || [])],
+  }));
+
+  for (const modelOrder of modelParsed) {
+    const existing = merged.find(order => order.merchantName === modelOrder.merchantName);
+    if (existing) {
+      existing.items.push(...modelOrder.items);
+      existing.warnings = existing.warnings?.filter((warning) => {
+        return !modelOrder.items.some(item => warning.includes(item.name));
+      });
+      existing.unrecognizedSegments = existing.unrecognizedSegments?.filter((segment) => {
+        return !modelOrder.items.some(item => segment.includes(item.name));
+      });
+      continue;
+    }
+
+    merged.push({
+      ...modelOrder,
+      warnings: [...(modelOrder.warnings || [])],
+      unrecognizedSegments: [...(modelOrder.unrecognizedSegments || [])],
+    });
+  }
+
+  return merged.map(order => ({
+    merchantName: order.merchantName,
+    items: order.items,
+    ...((order.warnings?.length || 0) > 0 && { warnings: order.warnings }),
+    ...((order.unrecognizedSegments?.length || 0) > 0 && { unrecognizedSegments: order.unrecognizedSegments }),
+  }));
+}
+
+function buildFallbackText(localParsed: ParsedOrder[]) {
+  return localParsed
+    .map((order) => {
+      const segments = [...(order.warnings || []), ...(order.unrecognizedSegments || [])];
+      if (segments.length === 0) return '';
+      return `${order.merchantName}: ${segments.join('，')}`;
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
 export async function parseOrderText(text: string): Promise<ParsedOrder[]> {
   const normalizedText = normalizeOrderText(text);
+  const localParsed = parseWeChatText(normalizedText);
+  const fallbackText = buildFallbackText(localParsed);
+  if (localParsed.length > 0 && !fallbackText) {
+    return localParsed;
+  }
+
   const config = getDeepSeekConfig();
   if (!config.enabled) {
-    return parseWeChatText(normalizedText);
+    return localParsed;
   }
 
   try {
@@ -84,7 +149,7 @@ export async function parseOrderText(text: string): Promise<ParsedOrder[]> {
           },
           {
             role: 'user',
-            content: normalizedText,
+            content: fallbackText || normalizedText,
           },
         ],
       }),
@@ -102,8 +167,11 @@ export async function parseOrderText(text: string): Promise<ParsedOrder[]> {
 
     const parsed = JSON.parse(extractJsonObject(content));
     const normalized = normalizeParsedOrders(parsed.orders);
-    return normalized.length > 0 ? normalized : parseWeChatText(normalizedText);
+    if (localParsed.length > 0) {
+      return normalized.length > 0 ? mergeParsedOrders(localParsed, normalized) : localParsed;
+    }
+    return normalized.length > 0 ? normalized : localParsed;
   } catch {
-    return parseWeChatText(normalizedText);
+    return localParsed;
   }
 }

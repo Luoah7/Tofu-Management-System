@@ -18,6 +18,7 @@ import MobileTaskDetail from '@/pages/mobile/TaskDetail';
 import MobileManage from '@/pages/mobile/Manage';
 import MobileMerchants from '@/pages/mobile/Merchants';
 import MobileProducts from '@/pages/mobile/Products';
+import MobileSettings from '@/pages/mobile/Settings';
 import MerchantBill from '@/pages/bill/MerchantBill';
 
 function getAuthedHomePath() {
@@ -83,6 +84,7 @@ function AppContent() {
               <Route path="manage" element={<MobileManage user={user} onLogout={() => { logout(); navigate('/login'); }} />} />
               <Route path="manage/merchants" element={<MobileMerchants />} />
               <Route path="manage/products" element={<MobileProducts />} />
+              <Route path="manage/settings" element={<MobileSettings />} />
             </Routes>
           </MobileLayout>
         ) : <Navigate to="/login" replace />

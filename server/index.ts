@@ -12,6 +12,8 @@ import merchantsRoutes from './routes/merchants.js';
 import productsRoutes from './routes/products.js';
 import tasksRoutes from './routes/tasks.js';
 import settlementsRoutes from './routes/settlements.js';
+import settingsRoutes from './routes/settings.js';
+import { loadTaskItemSettings } from './utils/app-settings.js';
 
 const app = new Hono();
 
@@ -25,6 +27,7 @@ app.route('/api/merchants', merchantsRoutes);
 app.route('/api/products', productsRoutes);
 app.route('/api/tasks', tasksRoutes);
 app.route('/api/settlements', settlementsRoutes);
+app.route('/api/settings', settingsRoutes);
 
 app.get('/uploads/tasks/:taskId/:fileName', async (c) => {
   const taskId = c.req.param('taskId');
@@ -165,6 +168,7 @@ if (process.env.NODE_ENV === 'production') {
 const PORT = parseInt(process.env.PORT || '3000');
 
 initDatabase();
+await loadTaskItemSettings();
 
 serve({
   fetch: app.fetch,

@@ -88,8 +88,18 @@ type PreviewTask = {
     displayAmount: number;
     displayUnit: TaskItemUnit;
     plannedWeight: number;
+    source?: 'rule' | 'model';
+    needsConfirmation?: boolean;
   }>;
   warnings?: string[];
+};
+
+type PreviewStats = {
+  totalLines: number;
+  ruleMatchedCount: number;
+  modelFallbackCount: number;
+  unrecognizedCount: number;
+  skippedMerchantCount: number;
 };
 
 type EntryItem = EntryLine & {
@@ -352,6 +362,9 @@ export default function MobileTasks() {
   const [createLoading, setCreateLoading] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [previewTasks, setPreviewTasks] = useState<PreviewTask[]>([]);
+  const [previewStats, setPreviewStats] = useState<PreviewStats | null>(null);
+  const [previewUnrecognizedSegments, setPreviewUnrecognizedSegments] = useState<string[]>([]);
+  const [previewSkippedMerchants, setPreviewSkippedMerchants] = useState<string[]>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewEditingId, setPreviewEditingId] = useState('');
   const [keyword, setKeyword] = useState('');
@@ -403,6 +416,9 @@ export default function MobileTasks() {
     setEntryMode('paste');
     setPasteText('');
     setPreviewTasks([]);
+    setPreviewStats(null);
+    setPreviewUnrecognizedSegments([]);
+    setPreviewSkippedMerchants([]);
     setPreviewEditingId('');
     setTaskDate(dayjs().add(1, 'day').format('YYYY-MM-DD'));
 
@@ -449,11 +465,19 @@ export default function MobileTasks() {
 
     setSubmitLoading(true);
     try {
-      const result = await api.post<{ tasks: Array<Omit<PreviewTask, 'id'>>; skippedMerchants: string[] }>('/tasks/preview-wechat', {
+      const result = await api.post<{
+        tasks: Array<Omit<PreviewTask, 'id'>>;
+        skippedMerchants: string[];
+        unrecognizedSegments: string[];
+        stats: PreviewStats;
+      }>('/tasks/preview-wechat', {
         text: normalizedText,
         date: taskDate,
       });
       setPreviewTasks(result.tasks.map(toPreviewTask));
+      setPreviewStats(result.stats || null);
+      setPreviewUnrecognizedSegments(result.unrecognizedSegments || []);
+      setPreviewSkippedMerchants(result.skippedMerchants || []);
       setPreviewEditingId('');
       setPreviewOpen(true);
     } catch (err: any) {
@@ -544,6 +568,9 @@ export default function MobileTasks() {
       setCreateOpen(false);
       setPasteText('');
       setPreviewTasks([]);
+      setPreviewStats(null);
+      setPreviewUnrecognizedSegments([]);
+      setPreviewSkippedMerchants([]);
       setPreviewEditingId('');
       setActiveTab('pending');
       loadTasks();
@@ -868,6 +895,38 @@ export default function MobileTasks() {
           </div>
         ) : (
           <div className="mobile-record-stack mobile-entry-panel">
+            {previewStats ? (
+              <div className="mobile-entry-summary">
+                <div className="mobile-entry-summary__card">
+                  <span>规则识别</span>
+                  <strong>{previewStats.ruleMatchedCount} 项</strong>
+                </div>
+                <div className="mobile-entry-summary__card">
+                  <span>模型确认</span>
+                  <strong>{previewStats.modelFallbackCount} 项</strong>
+                </div>
+                <div className="mobile-entry-summary__card">
+                  <span>未识别</span>
+                  <strong>{previewStats.unrecognizedCount} 条</strong>
+                </div>
+              </div>
+            ) : null}
+
+            {previewUnrecognizedSegments.length > 0 || previewSkippedMerchants.length > 0 ? (
+              <div className="mobile-record-card__warnings">
+                {previewUnrecognizedSegments.map((segment) => (
+                  <div key={segment} className="mobile-record-card__warning">
+                    {segment}
+                  </div>
+                ))}
+                {previewSkippedMerchants.map((merchant) => (
+                  <div key={merchant} className="mobile-record-card__warning">
+                    未匹配商户：{merchant}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
             {previewTasks.map((task) => (
               <div key={task.id} className="mobile-record-card mobile-record-card--button" onClick={() => setPreviewEditingId(task.id)}>
                 <div className="mobile-record-card__head">
@@ -891,7 +950,10 @@ export default function MobileTasks() {
                   {task.items.map((item) => (
                     <div key={item.id} className="mobile-record-card__row">
                       <div>
-                        <div>{item.productName}</div>
+                        <div>
+                          {item.productName}
+                          {item.source === 'model' ? '（模型识别，需确认）' : ''}
+                        </div>
                         <div className="mobile-record-card__dim">{item.specLabel}</div>
                       </div>
                       <strong>{formatTaskItemMeasure(item.displayAmount, item.displayUnit)}</strong>

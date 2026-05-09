@@ -5,7 +5,8 @@ export type TaskItemUnit = (typeof TASK_ITEM_UNITS)[number];
 export const PENDING_STATUS_ORDER = ['待配货', '待复秤', '待送达'] as const;
 
 const KG_TO_JIN = 2;
-const BASKET_TO_JIN = 12;
+const DEFAULT_BASKET_WEIGHT_JIN = 12;
+let basketWeightJin = DEFAULT_BASKET_WEIGHT_JIN;
 
 function roundToSingleDecimal(value: number) {
   return Math.round(value * 10) / 10;
@@ -20,13 +21,31 @@ export function normalizeTaskItemUnit(unit?: string): TaskItemUnit {
   return '斤';
 }
 
+function normalizeBasketWeightJin(value: number) {
+  const normalized = roundToSingleDecimal(Number(value) || 0);
+  return normalized > 0 ? normalized : DEFAULT_BASKET_WEIGHT_JIN;
+}
+
+export function getTaskItemSettings() {
+  return {
+    basketWeightJin,
+  };
+}
+
+export function setTaskItemSettings(settings: { basketWeightJin?: number }) {
+  if (settings.basketWeightJin !== undefined) {
+    basketWeightJin = normalizeBasketWeightJin(settings.basketWeightJin);
+  }
+  return getTaskItemSettings();
+}
+
 export function normalizeTaskItemInput(input: { displayAmount: number; displayUnit?: string }) {
   const displayUnit = normalizeTaskItemUnit(input.displayUnit);
   const displayAmount = roundToSingleDecimal(Math.max(0, Number(input.displayAmount) || 0));
   const plannedWeight = displayUnit === '公斤'
     ? roundToSingleDecimal(displayAmount * KG_TO_JIN)
     : displayUnit === '筐'
-      ? roundToSingleDecimal(displayAmount * BASKET_TO_JIN)
+      ? roundToSingleDecimal(displayAmount * basketWeightJin)
       : displayAmount;
 
   return {

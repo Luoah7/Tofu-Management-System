@@ -1283,6 +1283,25 @@ button {
   width: 100%;
 }
 
+.mobile-setting-measure {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  gap: 8px;
+  align-items: center;
+}
+
+.mobile-setting-measure .ant-input-number,
+.mobile-setting-measure .ant-select {
+  width: 100%;
+}
+
+.mobile-setting-hint {
+  margin-top: 10px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
 .mobile-stepper {
   display: grid;
   grid-template-columns: 38px minmax(0, 1fr) 38px;
