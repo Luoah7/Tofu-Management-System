@@ -18,6 +18,8 @@
 
 把代码放到 `/srv/tofu/current`，把数据库和 `.env` 放到 `shared` 目录，后面更新代码时不要覆盖数据。
 
+线上环境不要把 `DB_PATH` 改回 `./data/doufu.db`。这个相对路径会让服务读 `/srv/tofu/current/data/doufu.db`，更新代码或整份覆盖 `.env` 时很容易切到一份空库。线上固定用 `shared` 目录下的绝对路径。
+
 ## 首次部署
 
 ```bash
@@ -55,6 +57,12 @@ VITE_BUSINESS_ADDRESS=对外地址
 
 ```bash
 ln -sf /srv/tofu/shared/.env /srv/tofu/current/.env
+```
+
+如果本地 `.env` 需要覆盖到线上，不要整份直接替换。至少保留线上这条数据库路径不变：
+
+```bash
+DB_PATH=/srv/tofu/shared/data/doufu.db
 ```
 
 构建并初始化数据：

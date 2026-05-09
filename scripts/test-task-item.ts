@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { comparePendingTasks, formatTaskItemMeasure, normalizeTaskItemInput } from '../src/shared/task-item.js';
+import { comparePendingTasks, formatTaskItemMeasure, formatTaskItemRecordMeasure, normalizeTaskItemInput } from '../src/shared/task-item.js';
 
 assert.deepEqual(
   normalizeTaskItemInput({ displayAmount: 3, displayUnit: '公斤' }),
@@ -16,6 +16,16 @@ assert.deepEqual(
 assert.equal(formatTaskItemMeasure(3, '公斤'), '3公斤', '公斤展示格式不对');
 assert.equal(formatTaskItemMeasure(1, '筐'), '1筐', '筐展示格式不对');
 assert.equal(formatTaskItemMeasure(2.5, '斤'), '2.5斤', '斤展示格式不对');
+assert.equal(
+  formatTaskItemRecordMeasure({ plannedWeight: 25, displayAmount: 0, displayUnit: '斤' }),
+  '25斤',
+  '历史明细缺少旧weight字段时应该展示plannedWeight',
+);
+assert.equal(
+  formatTaskItemRecordMeasure({ plannedWeight: 24, displayAmount: 2, displayUnit: '筐' }),
+  '2筐',
+  '历史明细有displayAmount时应该优先展示原始下单单位',
+);
 
 const pendingTasks = [
   { id: 'c', taskDate: '2026-05-09', status: '待送达', createdAt: '2026-05-08 08:00:00' },

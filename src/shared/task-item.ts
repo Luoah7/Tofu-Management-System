@@ -69,6 +69,11 @@ export function formatTaskItemMeasure(amount: number, unit?: string) {
   return `${formatNumber(Number(amount) || 0)}${normalizeTaskItemUnit(unit)}`;
 }
 
+export function formatTaskItemRecordMeasure(input: { plannedWeight: number; displayAmount?: number; displayUnit?: string }) {
+  const measure = resolveTaskItemMeasure(input);
+  return formatTaskItemMeasure(measure.displayAmount, measure.displayUnit);
+}
+
 export function getTaskItemStep(unit?: string) {
   return normalizeTaskItemUnit(unit) === '筐' ? 1 : 0.5;
 }

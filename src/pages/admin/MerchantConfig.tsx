@@ -3,9 +3,17 @@ import { Card, Table, Button, Modal, Form, Input, Select, Tag, Space, message, P
 import { PlusOutlined, EditOutlined, StopOutlined, PlayCircleOutlined, HistoryOutlined } from '@ant-design/icons';
 import { api } from '@/api/client';
 import { formatMoney } from '@/utils/format';
+import { formatTaskItemRecordMeasure, type TaskItemUnit } from '@/shared/task-item';
 
 type HistoryItem = {
-  productName: string; specLabel: string; weight: number; unitPrice: number; subtotal: number;
+  productName: string;
+  specLabel: string;
+  weight?: number;
+  plannedWeight: number;
+  displayAmount?: number;
+  displayUnit?: TaskItemUnit;
+  unitPrice: number;
+  subtotal: number;
 };
 
 type HistoryRecord = {
@@ -177,7 +185,11 @@ export default function MerchantConfig() {
                 { title: '日期', dataIndex: 'taskDate', width: 100 },
                 {
                   title: '商品', key: 'items', render: (_: any, r: HistoryRecord) =>
-                    r.items?.map(i => `${i.productName} ${i.weight}斤`).join('、') || '-',
+                    r.items?.map(i => `${i.productName} ${formatTaskItemRecordMeasure({
+                      plannedWeight: i.weight ?? i.plannedWeight,
+                      displayAmount: i.displayAmount,
+                      displayUnit: i.displayUnit,
+                    })}`).join('、') || '-',
                 },
                 { title: '应配', dataIndex: 'plannedWeight', width: 80, render: (v: number) => `${v}斤` },
                 { title: '实秤', dataIndex: 'actualWeight', width: 80, render: (v: number) => v > 0 ? `${v}斤` : '-' },

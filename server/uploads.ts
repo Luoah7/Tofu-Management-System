@@ -14,6 +14,7 @@ const r2Bucket = process.env.R2_BUCKET || '';
 const r2AccessKeyId = process.env.R2_ACCESS_KEY_ID || '';
 const r2SecretAccessKey = process.env.R2_SECRET_ACCESS_KEY || '';
 const r2Endpoint = process.env.R2_ENDPOINT || (r2AccountId ? `https://${r2AccountId}.r2.cloudflarestorage.com` : '');
+const r2PublicUrl = (process.env.R2_PUBLIC_URL || '').replace(/\/+$/, '');
 
 const useR2 = Boolean(r2Bucket && r2AccessKeyId && r2SecretAccessKey && r2Endpoint);
 
@@ -53,7 +54,12 @@ export function getTaskPhotoKey(taskId: string, fileName: string) {
 }
 
 export function getTaskPhotoUrl(taskId: string, fileName: string) {
-  return `/uploads/tasks/${taskId}/${fileName}`;
+  const key = getTaskPhotoKey(taskId, fileName);
+  if (useR2 && r2PublicUrl) {
+    return `${r2PublicUrl}/${key}`;
+  }
+
+  return `/uploads/${key}`;
 }
 
 export async function saveTaskPhoto(taskId: string, fileName: string, bytes: Buffer, mimeType: string) {
