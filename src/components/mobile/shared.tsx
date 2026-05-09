@@ -120,6 +120,7 @@ type TaskCardProps = {
 export function TaskCard({ task, onClick, onDelete, lead, delayMs = 0 }: TaskCardProps) {
   const previewItems = task.items.slice(0, 3);
   const restCount = Math.max(0, task.items.length - previewItems.length);
+  const isArchived = task.status === '已完成' || task.status === '异常';
   const weightLabel = task.actualWeight && task.actualWeight > 0
     ? `实秤 ${formatWeight(task.actualWeight)}`
     : `应配 ${formatWeight(task.plannedWeight)}`;
@@ -129,7 +130,7 @@ export function TaskCard({ task, onClick, onDelete, lead, delayMs = 0 }: TaskCar
     <div className="task-card-shell mobile-rise" style={{ animationDelay: `${delayMs}ms` }}>
       <button
         type="button"
-        className="task-card"
+        className={`task-card ${isArchived ? 'task-card--archived' : ''}`.trim()}
         onClick={onClick}
       >
         <div className="task-card__head">

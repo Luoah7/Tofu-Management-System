@@ -5,6 +5,7 @@ import { db, deliveryTasks, taskItems, taskPhotos, merchants, products as produc
 import { authMiddleware } from '../auth.js';
 import { parseOrderText } from '../utils/order-parser.js';
 import { matchProductWithModel } from '../utils/product-matcher.js';
+import { isTestMerchantName } from '../utils/task-filters.js';
 import { recognizeWeightFromImage } from '../utils/weigh-recognizer.js';
 import { v4 as uuid } from 'uuid';
 import { getTaskPhotoUrl, removeTaskPhoto, saveTaskPhoto } from '../uploads.js';
@@ -154,9 +155,11 @@ tasksRoutes.get('/stats', async (c) => {
 
   const allTasks = await db.select().from(deliveryTasks).where(eq(deliveryTasks.taskDate, date));
   const monthTasks = await db.select().from(deliveryTasks).where(like(deliveryTasks.taskDate, `${monthPrefix}%`));
+  const businessDayTasks = allTasks.filter(task => !isTestMerchantName(task.merchantName));
+  const businessMonthTasks = monthTasks.filter(task => !isTestMerchantName(task.merchantName));
 
-  const dayTaskIds = allTasks.map(task => task.id);
-  const monthTaskIds = monthTasks.map(task => task.id);
+  const dayTaskIds = businessDayTasks.map(task => task.id);
+  const monthTaskIds = businessMonthTasks.map(task => task.id);
   const dayItems = dayTaskIds.length > 0
     ? await db.select().from(taskItems).where(inArray(taskItems.taskId, dayTaskIds))
     : [];
@@ -164,17 +167,17 @@ tasksRoutes.get('/stats', async (c) => {
     ? await db.select().from(taskItems).where(inArray(taskItems.taskId, monthTaskIds))
     : [];
 
-  const taskWeightMap = new Map(allTasks.map(task => [task.id, task.actualWeight > 0 ? task.actualWeight : task.plannedWeight]));
-  const monthTaskWeightMap = new Map(monthTasks.map(task => [task.id, task.actualWeight > 0 ? task.actualWeight : task.plannedWeight]));
+  const taskWeightMap = new Map(businessDayTasks.map(task => [task.id, task.actualWeight > 0 ? task.actualWeight : task.plannedWeight]));
+  const monthTaskWeightMap = new Map(businessMonthTasks.map(task => [task.id, task.actualWeight > 0 ? task.actualWeight : task.plannedWeight]));
 
   const stats = {
-    total: allTasks.length,
-    pendingWeigh: allTasks.filter(t => t.status === '待配货' || t.status === '待复秤').length,
-    pendingDelivery: allTasks.filter(t => t.status === '待送达').length,
-    completed: allTasks.filter(t => t.status === '已完成').length,
-    exception: allTasks.filter(t => t.status === '异常').length,
-    totalPlannedWeight: allTasks.reduce((s, t) => s + t.plannedWeight, 0),
-    totalActualWeight: allTasks.reduce((s, t) => s + t.actualWeight, 0),
+    total: businessDayTasks.length,
+    pendingWeigh: businessDayTasks.filter(t => t.status === '待配货' || t.status === '待复秤').length,
+    pendingDelivery: businessDayTasks.filter(t => t.status === '待送达').length,
+    completed: businessDayTasks.filter(t => t.status === '已完成').length,
+    exception: businessDayTasks.filter(t => t.status === '异常').length,
+    totalPlannedWeight: businessDayTasks.reduce((s, t) => s + t.plannedWeight, 0),
+    totalActualWeight: businessDayTasks.reduce((s, t) => s + t.actualWeight, 0),
     todayRevenue: dayItems.reduce((sum, item) => {
       const taskWeight = taskWeightMap.get(item.taskId) ?? item.plannedWeight;
       const weight = item.actualWeight > 0 ? item.actualWeight : taskWeight > 0 ? item.plannedWeight : item.plannedWeight;

@@ -68,6 +68,14 @@ type Task = {
   photos?: TaskPhoto[];
 };
 
+const PHOTO_STAGE_ORDER = ['复秤', '送达'];
+
+function getPhotoStageTitle(stage: string) {
+  if (stage === '复秤') return '复秤照片';
+  if (stage === '送达') return '送达照片';
+  return `${stage}照片`;
+}
+
 export default function TaskDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -85,6 +93,8 @@ export default function TaskDetail() {
   const [recognizedWeight, setRecognizedWeight] = useState<RecognizedWeight | null>(null);
   const [photoViewerOpen, setPhotoViewerOpen] = useState(false);
   const [photoViewerIndex, setPhotoViewerIndex] = useState(0);
+  const [photoViewerImages, setPhotoViewerImages] = useState<string[]>([]);
+  const [photoViewerKey, setPhotoViewerKey] = useState(0);
   const albumInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const weighPhotoInputRef = useRef<HTMLInputElement | null>(null);
@@ -145,6 +155,30 @@ export default function TaskDetail() {
     if (!task) return 0;
     return task.items.reduce((sum, item) => sum + Number(weighValues[item.id] || 0), 0);
   }, [task, weighValues]);
+
+  const photoSections = useMemo(() => {
+    const groups = new Map<string, TaskPhoto[]>();
+    (task?.photos || []).forEach(photo => {
+      const stage = photo.stage || '留档';
+      groups.set(stage, [...(groups.get(stage) || []), photo]);
+    });
+
+    return Array.from(groups.entries())
+      .sort(([stageA], [stageB]) => {
+        const orderA = PHOTO_STAGE_ORDER.indexOf(stageA);
+        const orderB = PHOTO_STAGE_ORDER.indexOf(stageB);
+        if (orderA === -1 && orderB === -1) return stageA.localeCompare(stageB, 'zh-CN');
+        if (orderA === -1) return 1;
+        if (orderB === -1) return -1;
+        return orderA - orderB;
+      })
+      .map(([stage, photos]) => ({
+        stage,
+        title: getPhotoStageTitle(stage),
+        photos,
+        urls: photos.map(photo => photo.url),
+      }));
+  }, [task?.photos]);
 
   const updateWeighValue = (itemId: string, value: number) => {
     setWeighValues(prev => ({
@@ -224,6 +258,13 @@ export default function TaskDetail() {
     setDeliveryPhotos(prev => prev.filter((_, currentIndex) => currentIndex !== index));
   };
 
+  const openPhotoViewer = (images: string[], index: number) => {
+    setPhotoViewerImages(images);
+    setPhotoViewerIndex(index);
+    setPhotoViewerKey(prev => prev + 1);
+    setPhotoViewerOpen(true);
+  };
+
   const handleComplete = async () => {
     if (!task) return;
     setActionLoading(true);
@@ -291,7 +332,6 @@ export default function TaskDetail() {
       : `少 ${formatWeight(Math.abs(totalDelta))}`;
   const isWeighStage = task.status === '待复秤' || task.status === '待配货';
   const isDeliveryStage = task.status === '待送达';
-  const archivedPhotoUrls = task.photos?.map(photo => photo.url) || [];
 
   return (
     <div className="mobile-page">
@@ -678,24 +718,31 @@ export default function TaskDetail() {
       {task.photos?.length ? (
         <>
           <SectionHeading title="照片" extra={`${task.photos.length} 张`} />
-          <div className="mobile-photo-grid mobile-rise" style={{ animationDelay: '280ms' }}>
-            {task.photos.map((photo, index) => (
-              <button
-                key={photo.id}
-                type="button"
-                className="mobile-photo-card mobile-photo-card--button"
-                onClick={() => {
-                  setPhotoViewerIndex(index);
-                  setPhotoViewerOpen(true);
-                }}
-              >
-                <img src={photo.url} alt={photo.originalName} className="mobile-photo-card__image" />
-                <span className="mobile-photo-card__stage">{photo.stage || '留档'}</span>
-              </button>
+          <div className="mobile-photo-section-stack mobile-rise" style={{ animationDelay: '280ms' }}>
+            {photoSections.map(section => (
+              <div key={section.stage} className="mobile-photo-section">
+                <div className="mobile-photo-section__head">
+                  <span>{section.title}</span>
+                  <span>{section.photos.length} 张</span>
+                </div>
+                <div className="mobile-photo-grid mobile-photo-grid--embedded">
+                  {section.photos.map((photo, index) => (
+                    <button
+                      key={photo.id}
+                      type="button"
+                      className="mobile-photo-card mobile-photo-card--button"
+                      onClick={() => openPhotoViewer(section.urls, index)}
+                    >
+                      <img src={photo.url} alt={photo.originalName} className="mobile-photo-card__image" />
+                    </button>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
           <ImageViewer.Multi
-            images={archivedPhotoUrls}
+            key={photoViewerKey}
+            images={photoViewerImages}
             visible={photoViewerOpen}
             defaultIndex={photoViewerIndex}
             onClose={() => setPhotoViewerOpen(false)}
